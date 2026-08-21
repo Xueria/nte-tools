@@ -33,7 +33,7 @@ func setupMetadata() {
 	app.SetMetadata(fyne.AppMetadata{
 		ID:      "dev.xueria.tools.blind",
 		Name:    "blind-tools",
-		Version: "0.1",
+		Version: "0.2",
 		Build:   1,
 		Icon:    res.Icon,
 		Release: false,
