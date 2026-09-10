@@ -26,8 +26,8 @@ const (
 	chipPanelRatio = 0.45
 )
 
-// Bid 是「单格推测」页：勾选可能出现的单格物品，输入单格均价与数量区间，
-// 列出可能的物品组成。
+// Bid 是「单格推测」页：可用标签筛选可能出现的单格物品，输入单格均价与数量
+// 区间，列出可能的物品组成。标签只是筛选条件：一个都不勾选就表示不筛选。
 type Bid struct {
 	root fyne.CanvasObject
 
@@ -52,6 +52,8 @@ type Bid struct {
 	results     []bid.Composition
 	truncated   bool
 	inferred    bool
+	// usedCount 是上一次推测实际使用的物品数量。
+	usedCount int
 
 	// OnInfer 由装配层赋值：用户点「推测」时触发，页面本身不做推测。
 	OnInfer func(items []bid.Item, avg, minCount, maxCount int)
@@ -69,14 +71,13 @@ func (v *Bid) NewTab() Tab {
 	return Tab{Title: "单格推测", Icon: theme.SearchIcon(), Content: v.root}
 }
 
-// SetCellItems 用可参与推测的单格物品重建标签区，并默认全部勾选。
+// SetCellItems 用可参与推测的单格物品重建标签区，默认不筛选（全部可用）。
 func (v *Bid) SetCellItems(items []bid.Item) {
 	v.items = items
 	v.selected = make([]bool, len(items))
 	v.chips = make([]*chip, 0, len(items))
 
 	for i := range v.selected {
-		v.selected[i] = true
 		v.chips = append(v.chips, newChip(v))
 	}
 
@@ -235,7 +236,7 @@ func (v *Bid) invertVisible() {
 	v.updateSelectionLabel()
 }
 
-// updateSelectionLabel 刷新已勾选数量。
+// updateSelectionLabel 刷新勾选数量；一个都没勾选表示不做筛选。
 func (v *Bid) updateSelectionLabel() {
 	selected := 0
 
@@ -245,10 +246,15 @@ func (v *Bid) updateSelectionLabel() {
 		}
 	}
 
+	if selected == 0 {
+		v.selectionLabel.SetText(fmt.Sprintf("未勾选＝不筛选，将使用全部 %d 件", len(v.items)))
+		return
+	}
+
 	v.selectionLabel.SetText(fmt.Sprintf("已勾选 %d / %d 件", selected, len(v.items)))
 }
 
-// selectedItems 返回当前勾选的物品。
+// selectedItems 返回当前勾选的物品；一个都没勾选时返回 nil，由调用方决定含义。
 func (v *Bid) selectedItems() []bid.Item {
 	items := make([]bid.Item, 0, len(v.items))
 
@@ -271,7 +277,7 @@ func (v *Bid) updateHeader() {
 	case len(v.results) == 0:
 		parts = append(parts, "没有符合条件的组合")
 	default:
-		parts = append(parts, fmt.Sprintf("共 %d 种可能", len(v.results)))
+		parts = append(parts, fmt.Sprintf("共 %d 种可能（基于 %d 件）", len(v.results), v.usedCount))
 	}
 
 	if v.truncated {
@@ -281,12 +287,17 @@ func (v *Bid) updateHeader() {
 	v.headerLabel.SetText(strings.Join(parts, " · "))
 }
 
-// infer 校验输入，并把推测请求交给装配层。
+// infer 校验输入，并把推测请求交给装配层。标签只是筛选条件，一个都不勾选时
+// 用全部物品参与推测。
 func (v *Bid) infer() {
 	items := v.selectedItems()
 
 	if len(items) == 0 {
-		v.SetStatus("请先勾选至少一个可能出现的物品")
+		items = v.items
+	}
+
+	if len(items) == 0 {
+		v.SetStatus("还没有加载到单格物品数据")
 		return
 	}
 
@@ -312,6 +323,7 @@ func (v *Bid) infer() {
 	}
 
 	v.inferred = true
+	v.usedCount = len(items)
 	v.SetStatus("")
 	v.updateHeader()
 
