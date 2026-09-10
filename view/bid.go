@@ -26,8 +26,8 @@ const (
 	filterPanelRatio = 0.5
 )
 
-// Bid 是「单格推测」页：可用标签筛选可能出现的单格物品，输入单格均价与数量
-// 区间，列出可能的物品组成。标签只是筛选条件：一个都不勾选就表示不筛选。
+// Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价与数量区间，
+// 由算法从全部单格物品里补足其余位置，列出可能的物品组成。
 type Bid struct {
 	root fyne.CanvasObject
 
@@ -36,14 +36,13 @@ type Bid struct {
 	minEntry *widget.Entry
 	maxEntry *widget.Entry
 
-	// 物品标签
+	// 已确认物品
 	searchEntry    *widget.Entry
 	selectionLabel *widget.Label
 	chipFlow       *chipFlow
 	items          []bid.Item
 	selected       []bool
 	chips          []*chip
-	visible        []int
 
 	// 结果
 	statusLabel *widget.Label
@@ -52,11 +51,11 @@ type Bid struct {
 	results     []bid.Composition
 	truncated   bool
 	inferred    bool
-	// usedCount 是上一次推测实际使用的物品数量。
-	usedCount int
+	// requiredCount 是上一次推测里已确认的物品数量。
+	requiredCount int
 
 	// OnInfer 由装配层赋值：用户点「推测」时触发，页面本身不做推测。
-	OnInfer func(items []bid.Item, avg, minCount, maxCount int)
+	OnInfer func(required []bid.Item, avg, minCount, maxCount int)
 }
 
 // NewBid 构建单格推测页。
@@ -71,7 +70,7 @@ func (v *Bid) NewTab() Tab {
 	return Tab{Title: "单格推测", Icon: theme.SearchIcon(), Content: v.root}
 }
 
-// SetCellItems 用可参与推测的单格物品重建标签区，默认不筛选（全部可用）。
+// SetCellItems 用可参与推测的单格物品重建标签区，默认没有已确认物品。
 func (v *Bid) SetCellItems(items []bid.Item) {
 	v.items = items
 	v.selected = make([]bool, len(items))
@@ -155,9 +154,9 @@ func (v *Bid) build() fyne.CanvasObject {
 	return split
 }
 
-// buildFilter 构建左侧的物品筛选栏。
+// buildFilter 构建左侧的已确认物品筛选栏。
 func (v *Bid) buildFilter() fyne.CanvasObject {
-	header := widget.NewLabelWithStyle("参与推测的物品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	header := widget.NewLabelWithStyle("已确认在里面的物品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	v.selectionLabel = widget.NewLabel("")
 	v.selectionLabel.Wrapping = fyne.TextWrapWord
@@ -166,18 +165,15 @@ func (v *Bid) buildFilter() fyne.CanvasObject {
 	v.searchEntry.SetPlaceHolder("搜索物品…")
 	v.searchEntry.OnChanged = v.applyFilter
 
-	buttons := container.NewHBox(
-		widget.NewButton("全选", func() { v.setVisibleChecked(true) }),
-		widget.NewButton("反选", v.invertVisible),
-		widget.NewButton("清空", func() { v.setVisibleChecked(false) }),
-	)
+	controls := container.NewBorder(nil, nil, nil,
+		widget.NewButton("清空勾选", v.clearSelection), v.searchEntry)
 
 	v.chipFlow = newChipFlow()
 	// 滚动条浮在内容之上，把它的宽度留在内容右侧，标签才不会被压住。
 	content := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), v.chipFlow)
 	scroll := container.NewVScroll(content)
 
-	top := container.NewVBox(header, v.selectionLabel, v.searchEntry, buttons, widget.NewSeparator())
+	top := container.NewVBox(header, v.selectionLabel, controls, widget.NewSeparator())
 
 	return container.NewBorder(top, nil, nil, nil, scroll)
 }
@@ -185,7 +181,6 @@ func (v *Bid) buildFilter() fyne.CanvasObject {
 // applyFilter 按关键字过滤标签区；只影响显示，不改动勾选状态。
 func (v *Bid) applyFilter(query string) {
 	key := strings.ToLower(strings.TrimSpace(query))
-	v.visible = v.visible[:0]
 	chips := make([]fyne.CanvasObject, 0, len(v.items))
 
 	for i, item := range v.items {
@@ -193,7 +188,6 @@ func (v *Bid) applyFilter(query string) {
 			continue
 		}
 
-		v.visible = append(v.visible, i)
 		v.chips[i].set(i, item, v.selected[i])
 		chips = append(chips, v.chips[i])
 	}
@@ -226,46 +220,40 @@ func (v *Bid) toggle(index int) {
 	v.updateSelectionLabel()
 }
 
-// setVisibleChecked 把当前可见的标签整体勾选或取消。
-func (v *Bid) setVisibleChecked(checked bool) {
-	for _, index := range v.visible {
-		v.selected[index] = checked
-		v.chips[index].set(index, v.items[index], checked)
+// clearSelection 取消所有已确认物品。
+func (v *Bid) clearSelection() {
+	for i := range v.selected {
+		if !v.selected[i] {
+			continue
+		}
+
+		v.selected[i] = false
+		v.chips[i].set(i, v.items[i], false)
 	}
 
 	v.updateSelectionLabel()
 }
 
-// invertVisible 反转当前可见标签的勾选状态。
-func (v *Bid) invertVisible() {
-	for _, index := range v.visible {
-		v.selected[index] = !v.selected[index]
-		v.chips[index].set(index, v.items[index], v.selected[index])
-	}
-
-	v.updateSelectionLabel()
-}
-
-// updateSelectionLabel 刷新勾选数量；一个都没勾选表示不做筛选。
+// updateSelectionLabel 刷新已确认物品的说明。
 func (v *Bid) updateSelectionLabel() {
-	selected := 0
+	confirmed := 0
 
 	for _, checked := range v.selected {
 		if checked {
-			selected++
+			confirmed++
 		}
 	}
 
-	if selected == 0 {
-		v.selectionLabel.SetText(fmt.Sprintf("未勾选＝不筛选，将使用全部 %d 件", len(v.items)))
+	if confirmed == 0 {
+		v.selectionLabel.SetText(fmt.Sprintf("未勾选＝不限定，将从全部 %d 件里推测", len(v.items)))
 		return
 	}
 
-	v.selectionLabel.SetText(fmt.Sprintf("已勾选 %d / %d 件", selected, len(v.items)))
+	v.selectionLabel.SetText(fmt.Sprintf("已确认 %d 件在里面，其余位置由算法补足", confirmed))
 }
 
-// selectedItems 返回当前勾选的物品；一个都没勾选时返回 nil，由调用方决定含义。
-func (v *Bid) selectedItems() []bid.Item {
+// requiredItems 返回已确认在组合里的物品。
+func (v *Bid) requiredItems() []bid.Item {
 	items := make([]bid.Item, 0, len(v.items))
 
 	for i, item := range v.items {
@@ -287,7 +275,11 @@ func (v *Bid) updateHeader() {
 	case len(v.results) == 0:
 		parts = append(parts, "没有符合条件的组合")
 	default:
-		parts = append(parts, fmt.Sprintf("共 %d 种可能（基于 %d 件）", len(v.results), v.usedCount))
+		parts = append(parts, fmt.Sprintf("共 %d 种可能", len(v.results)))
+
+		if v.requiredCount > 0 {
+			parts = append(parts, fmt.Sprintf("已确认 %d 件", v.requiredCount))
+		}
 	}
 
 	if v.truncated {
@@ -297,20 +289,8 @@ func (v *Bid) updateHeader() {
 	v.headerLabel.SetText(strings.Join(parts, " · "))
 }
 
-// infer 校验输入，并把推测请求交给装配层。标签只是筛选条件，一个都不勾选时
-// 用全部物品参与推测。
+// infer 校验输入，并把推测请求交给装配层。
 func (v *Bid) infer() {
-	items := v.selectedItems()
-
-	if len(items) == 0 {
-		items = v.items
-	}
-
-	if len(items) == 0 {
-		v.SetStatus("还没有加载到单格物品数据")
-		return
-	}
-
 	avg, ok := parseCount(v.avgEntry.Text)
 
 	if !ok {
@@ -332,13 +312,21 @@ func (v *Bid) infer() {
 		return
 	}
 
+	required := v.requiredItems()
+
+	if len(required) > maxCount {
+		v.SetStatus(fmt.Sprintf("已确认 %d 件，超过数量上限 %d，请调整数量区间或取消勾选",
+			len(required), maxCount))
+		return
+	}
+
 	v.inferred = true
-	v.usedCount = len(items)
+	v.requiredCount = len(required)
 	v.SetStatus("")
 	v.updateHeader()
 
 	if v.OnInfer != nil {
-		v.OnInfer(items, avg, minCount, maxCount)
+		v.OnInfer(required, avg, minCount, maxCount)
 	}
 }
 

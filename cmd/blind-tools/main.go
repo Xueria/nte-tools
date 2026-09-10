@@ -53,16 +53,21 @@ func setupMainWindowAndRun() {
 	bidPage := view.NewBid()
 	items := view.NewItems()
 
+	// cells 是全部单格（1x1）物品，作为推测的候选池，随数据刷新一起更新。
+	var cells []bid.Item
+
 	reload := func() {
 		loadLocalBoxes(data, planner)
 		loadRemoteBoxes(data, planner)
 
-		bidPage.SetCellItems(loadBidGrids(data, items))
+		cells = loadBidGrids(data, items)
+		bidPage.SetCellItems(cells)
 	}
 	planner.OnRefresh = reload
 
-	bidPage.OnInfer = func(cellItems []bid.Item, avg, minCount, maxCount int) {
-		bidPage.SetCompositions(bid.Infer(cellItems, avg, minCount, maxCount))
+	// required 是页面上已勾选（已确认在组合里）的物品，其余由算法从 cells 补足。
+	bidPage.OnInfer = func(required []bid.Item, avg, minCount, maxCount int) {
+		bidPage.SetCompositions(bid.Infer(cells, required, avg, minCount, maxCount))
 	}
 
 	window.SetContent(view.NewShell(

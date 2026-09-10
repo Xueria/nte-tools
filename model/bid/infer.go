@@ -48,11 +48,13 @@ func CellItems(grids []Grid) []Item {
 	return nil
 }
 
-// Infer 反推可能的物品组成：件数落在 [minCount, maxCount] 内，且组合的真实均价
-// 与 avg 相差小于 1。游戏把均价显示成整数时，四舍五入、向下取整、向上取整三种
-// 算法下的真实均价都落在 (avg-1, avg+1) 内，所以这个口径不会漏掉真实组成。
-func Infer(items []Item, avg, minCount, maxCount int) InferResult {
-	if len(items) == 0 || minCount < 1 || maxCount < minCount {
+// Infer 反推可能的物品组成：required 里的物品是玩家已确认在里面的，必须出现在
+// 每个结果中；其余位置从 items 里补足。总件数落在 [minCount, maxCount] 内，且
+// 组合的真实均价与 avg 相差小于 1。游戏把均价显示成整数时，四舍五入、向下取整、
+// 向上取整三种算法下的真实均价都落在 (avg-1, avg+1) 内，所以这个口径不会漏掉
+// 真实组成。
+func Infer(items, required []Item, avg, minCount, maxCount int) InferResult {
+	if len(items) == 0 || minCount < 1 || maxCount < minCount || len(required) > maxCount {
 		return InferResult{}
 	}
 
@@ -60,13 +62,22 @@ func Infer(items []Item, avg, minCount, maxCount int) InferResult {
 	copy(sorted, items)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Value > sorted[j].Value })
 
+	requiredTotal := 0
+
+	for _, item := range required {
+		requiredTotal += item.Value
+	}
+
 	state := &searchState{
-		items:    sorted,
-		smallest: sorted[len(sorted)-1].Value,
-		avg:      avg,
-		minCount: minCount,
-		maxCount: maxCount,
-		budget:   searchBudget,
+		items:     sorted,
+		required:  required,
+		smallest:  sorted[len(sorted)-1].Value,
+		avg:       avg,
+		minCount:  minCount,
+		maxCount:  maxCount,
+		baseCount: len(required),
+		baseSum:   requiredTotal,
+		budget:    searchBudget,
 	}
 	state.walk(0, 0)
 
@@ -84,13 +95,17 @@ func Infer(items []Item, avg, minCount, maxCount int) InferResult {
 	return result
 }
 
-// searchState 保存一次推测的搜索状态。
+// searchState 保存一次推测的搜索状态。walk 遍历的是「补足部分」，真实件数与
+// 真实总价要再加上已确认物品的 baseCount 与 baseSum。
 type searchState struct {
-	items    []Item
-	smallest int
-	avg      int
-	minCount int
-	maxCount int
+	items     []Item
+	required  []Item
+	smallest  int
+	avg       int
+	minCount  int
+	maxCount  int
+	baseCount int
+	baseSum   int
 
 	budget    int
 	picked    []Item
@@ -98,8 +113,8 @@ type searchState struct {
 	truncated bool
 }
 
-// walk 从下标 start 起继续挑选。物品按价格不增排列，且每次只能从当前下标往后
-// 选，因此每种组合恰好被走到一次。
+// walk 从下标 start 起继续挑选补足物品。物品按价格不增排列，且每次只能从当前
+// 下标往后选，因此每种组合恰好被走到一次。
 func (s *searchState) walk(start, total int) {
 	if s.truncated {
 		return
@@ -112,10 +127,11 @@ func (s *searchState) walk(start, total int) {
 
 	s.budget--
 
-	count := len(s.picked)
+	count := s.baseCount + len(s.picked)
+	sum := s.baseSum + total
 
-	if count >= s.minCount && withinAverage(total, count, s.avg) {
-		s.found = append(s.found, buildComposition(s.picked, total))
+	if count >= s.minCount && withinAverage(sum, count, s.avg) {
+		s.found = append(s.found, buildComposition(s.required, s.picked, sum))
 	}
 
 	if count == s.maxCount {
@@ -139,15 +155,15 @@ func (s *searchState) walk(start, total int) {
 	}
 }
 
-// reachable 判断在 total 上再加若干件（每件不超过 maxValue、且不小于最小物品价）
-// 之后，是否存在件数不超过 maxCount、均价又落进窗口的组合。
+// reachable 判断在补足部分 total 上再加若干件（每件不超过 maxValue、且不小于
+// 最小物品价）之后，是否存在件数不超过 maxCount、均价又落进窗口的组合。
 func (s *searchState) reachable(total, maxValue int) bool {
-	count := len(s.picked) + 1
+	count := s.baseCount + len(s.picked) + 1
 
 	for n := count; n <= s.maxCount; n++ {
 		extra := n - count
-		low := total + extra*s.smallest
-		high := total + extra*maxValue
+		low := s.baseSum + total + extra*s.smallest
+		high := s.baseSum + total + extra*maxValue
 
 		if high < windowLow(n, s.avg) || low > windowHigh(n, s.avg) {
 			continue
@@ -168,11 +184,24 @@ func withinAverage(total, count, avg int) bool {
 func windowLow(count, avg int) int  { return count*(avg-1) + 1 }
 func windowHigh(count, avg int) int { return count*(avg+1) - 1 }
 
-// buildComposition 把按价格降序排列的挑选结果压成「物品 + 件数」。
-func buildComposition(picked []Item, total int) Composition {
-	groups := make([]CompositionItem, 0, len(picked))
+// buildComposition 把已确认物品与补足物品合并后压成「物品 + 件数」，
+// 同价同名的条目会并成一条。
+func buildComposition(required, picked []Item, total int) Composition {
+	all := make([]Item, 0, len(required)+len(picked))
+	all = append(all, required...)
+	all = append(all, picked...)
 
-	for _, item := range picked {
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].Value != all[j].Value {
+			return all[i].Value > all[j].Value
+		}
+
+		return all[i].Name < all[j].Name
+	})
+
+	groups := make([]CompositionItem, 0, len(all))
+
+	for _, item := range all {
 		last := len(groups) - 1
 
 		if last >= 0 && groups[last].Item.Name == item.Name && groups[last].Item.Quality == item.Quality {
@@ -183,5 +212,5 @@ func buildComposition(picked []Item, total int) Composition {
 		groups = append(groups, CompositionItem{Item: item, Count: 1})
 	}
 
-	return Composition{Items: groups, Count: len(picked), Total: total}
+	return Composition{Items: groups, Count: len(all), Total: total}
 }
