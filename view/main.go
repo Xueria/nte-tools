@@ -71,7 +71,7 @@ type plannerView struct {
 	resultBox    *fyne.Container
 	summaryLabel *widget.Label
 
-	plan             []planStep
+	plan             []model.PlanStep
 	insufficient     bool
 	insufficientDraw int
 }
@@ -460,7 +460,7 @@ func (v *plannerView) calculate() {
 		end = start
 	}
 
-	result := calculatePlan(*v.selected, start, end, balances, v.preferredCurrencyID())
+	result := model.CalculatePlan(*v.selected, start, end, balances, v.preferredCurrencyID())
 
 	v.plan = result.Steps
 	v.insufficient = result.Insufficient
@@ -483,10 +483,10 @@ func (v *plannerView) preferredCurrencyID() string {
 }
 
 // updateSummary renders final balances and any insufficiency notice.
-func (v *plannerView) updateSummary(result planResult) {
+func (v *plannerView) updateSummary(result model.PlanResult) {
 	parts := make([]string, 0, len(result.Final))
-	for _, id := range sortedCurrencyIDs(*v.selected) {
-		parts = append(parts, fmt.Sprintf("%s %d", currencyName(*v.selected, id), result.Final[id]))
+	for _, id := range model.SortedCurrencyIDs(*v.selected) {
+		parts = append(parts, fmt.Sprintf("%s %d", model.CurrencyName(*v.selected, id), result.Final[id]))
 	}
 	summary := "剩余货币：" + strings.Join(parts, "，")
 	if result.Insufficient {

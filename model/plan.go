@@ -1,14 +1,13 @@
-package view
+package model
 
 import (
-	"blind-tools/model"
 	"maps"
 	"math"
 	"sort"
 )
 
-// planStep describes how a single draw is paid.
-type planStep struct {
+// PlanStep describes how a single draw is paid.
+type PlanStep struct {
 	Draw         int
 	CurrencyID   string
 	CurrencyName string
@@ -16,15 +15,15 @@ type planStep struct {
 	Remaining    int // remaining amount of the spent currency after this draw
 }
 
-// planResult is the outcome of calculating a spending plan.
-type planResult struct {
-	Steps        []planStep
+// PlanResult is the outcome of calculating a spending plan.
+type PlanResult struct {
+	Steps        []PlanStep
 	Final        map[string]int // final balance for every currency
 	Insufficient bool
 	FailAtDraw   int
 }
 
-// calculatePlan computes the optimal spending plan for the inclusive draw
+// CalculatePlan computes the optimal spending plan for the inclusive draw
 // range [start, end], using the following lexicographic objective:
 //
 //  1. maximise the number of completed draws;
@@ -34,7 +33,7 @@ type planResult struct {
 // Because the number of draws is small, it enumerates every currency assignment
 // (each draw independently chooses one of its accepted currencies) and keeps
 // the best one, which is guaranteed to be optimal.
-func calculatePlan(box model.BlindBox, start, end int, balances map[string]int, preferredID string) planResult {
+func CalculatePlan(box BlindBox, start, end int, balances map[string]int, preferredID string) PlanResult {
 	costs := buildCostLookup(box)
 	order := currencyOrder(box)
 
@@ -50,7 +49,7 @@ func calculatePlan(box model.BlindBox, start, end int, balances map[string]int, 
 		draws = append(draws, d)
 	}
 
-	res := planResult{Final: make(map[string]int, len(balances))}
+	res := PlanResult{Final: make(map[string]int, len(balances))}
 	maps.Copy(res.Final, balances)
 
 	if len(draws) == 0 {
@@ -85,10 +84,10 @@ func calculatePlan(box model.BlindBox, start, end int, balances map[string]int, 
 		id := bestChoices[i]
 		cost := costs[draws[i]][id]
 		res.Final[id] -= cost
-		res.Steps = append(res.Steps, planStep{
+		res.Steps = append(res.Steps, PlanStep{
 			Draw:         draws[i],
 			CurrencyID:   id,
-			CurrencyName: currencyName(box, id),
+			CurrencyName: CurrencyName(box, id),
 			Cost:         cost,
 			Remaining:    res.Final[id],
 		})
@@ -178,7 +177,7 @@ func imbalanceOf(balances, spent map[string]int) float64 {
 }
 
 // buildCostLookup maps a draw number (1 based) to its cost table.
-func buildCostLookup(box model.BlindBox) map[int]map[string]int {
+func buildCostLookup(box BlindBox) map[int]map[string]int {
 	costs := make(map[int]map[string]int, len(box.Manifest.Prices))
 	for _, price := range box.Manifest.Prices {
 		table := make(map[string]int, len(price.Cost))
@@ -191,7 +190,7 @@ func buildCostLookup(box model.BlindBox) map[int]map[string]int {
 // currencyOrder returns every currency id in a deterministic order: the
 // declared box currencies first, then any cost-table keys that are not
 // declared currencies.
-func currencyOrder(box model.BlindBox) []string {
+func currencyOrder(box BlindBox) []string {
 	seen := make(map[string]bool, len(box.Currencies)+1)
 	order := make([]string, 0, len(box.Currencies)+1)
 
@@ -222,8 +221,8 @@ func drawCurrencies(draw int, costs map[int]map[string]int, order []string) []st
 	return result
 }
 
-// currencyName resolves a currency ID to its display name.
-func currencyName(box model.BlindBox, id string) string {
+// CurrencyName resolves a currency ID to its display name.
+func CurrencyName(box BlindBox, id string) string {
 	for _, currency := range box.Currencies {
 		if currency.ID == id {
 			return currency.Name
@@ -232,9 +231,9 @@ func currencyName(box model.BlindBox, id string) string {
 	return id
 }
 
-// sortedCurrencyIDs returns the box currency IDs in a stable order, used to
+// SortedCurrencyIDs returns the box currency IDs in a stable order, used to
 // present final balances consistently.
-func sortedCurrencyIDs(box model.BlindBox) []string {
+func SortedCurrencyIDs(box BlindBox) []string {
 	ids := make([]string, 0, len(box.Currencies))
 	for _, currency := range box.Currencies {
 		ids = append(ids, currency.ID)
