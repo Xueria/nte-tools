@@ -49,19 +49,22 @@ func setupMainWindowAndRun() {
 
 	data := store.New()
 	planner := view.NewPlanner()
+	items := view.NewItems()
 	planner.OnRefresh = func() {
 		loadLocalBoxes(data, planner)
 		loadRemoteBoxes(data, planner)
+		loadBidGrids(data, items)
 	}
 
 	window.SetContent(view.NewShell(
 		planner.Tab(),
 		view.NewAuctionTab(),
-		view.NewItemsTab(),
+		items.Tab(),
 	))
 
 	loadLocalBoxes(data, planner)
 	loadRemoteBoxes(data, planner)
+	loadBidGrids(data, items)
 
 	window.ShowAndRun()
 }
@@ -96,4 +99,16 @@ func loadRemoteBoxes(data *store.Store, planner *view.Planner) {
 			planner.SetRemoteBoxes(boxes)
 		})
 	}()
+}
+
+// loadBidGrids 读取本地竞拍占格数据并推给拍品清单页。
+func loadBidGrids(data *store.Store, items *view.Items) {
+	grids, err := data.BidGrids()
+	if err != nil {
+		items.SetStatus(fmt.Sprintf("竞拍数据加载失败：%v", err))
+		return
+	}
+
+	items.SetStatus("")
+	items.SetBidGrids(grids)
 }
