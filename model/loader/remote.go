@@ -1,6 +1,8 @@
-package model
+package loader
 
 import (
+	"blind-tools/model"
+
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,7 +38,7 @@ var remoteHTTP = &http.Client{Timeout: 15 * time.Second}
 
 // LoadRemoteBoxes 从给定的 raw GitHub 目录 URL 加载盲盒。
 // URL 由调用方显式传入，使本函数与具体远程源解耦，可单独测试。
-func LoadRemoteBoxes(rawURL string) ([]BlindBox, error) {
+func LoadRemoteBoxes(rawURL string) ([]model.BlindBox, error) {
 	if rawURL == "" {
 		return nil, nil
 	}
@@ -57,7 +59,7 @@ func LoadRemoteBoxes(rawURL string) ([]BlindBox, error) {
 		return nil, err
 	}
 
-	var boxes []BlindBox
+	var boxes []model.BlindBox
 	for _, entry := range entries {
 		if entry.Type != "dir" {
 			continue
@@ -77,7 +79,7 @@ func LoadRemoteBoxes(rawURL string) ([]BlindBox, error) {
 			log.Printf("remote: blind box %s: load local currency failed: %v", entry.Name, err)
 		}
 
-		box := BlindBox{Manifest: manifest}
+		box := model.BlindBox{Manifest: manifest}
 		if localCurrency != nil {
 			box.Currencies = localCurrency
 		} else {
@@ -88,11 +90,11 @@ func LoadRemoteBoxes(rawURL string) ([]BlindBox, error) {
 			continue
 		}
 
-		if err := ValidateManifestPrices(box); err != nil {
+		if err := model.ValidateManifestPrices(box); err != nil {
 			log.Printf("remote: skip %s: %v", entry.Name, err)
 			continue
 		}
-		if err := ValidateManifestDraws(box); err != nil {
+		if err := model.ValidateManifestDraws(box); err != nil {
 			log.Printf("remote: skip %s: %v", entry.Name, err)
 			continue
 		}
@@ -200,16 +202,16 @@ func listRemoteFolder(owner, repo, branch, path string) ([]ghEntry, error) {
 }
 
 // fetchManifest downloads and parses a manifest.json file.
-func fetchManifest(owner, repo, branch, folder string) (Manifest, error) {
-	var manifest Manifest
+func fetchManifest(owner, repo, branch, folder string) (model.Manifest, error) {
+	var manifest model.Manifest
 	err := fetchJSON(rawFileURL(owner, repo, branch, folder, ManifestFile), &manifest)
 	return manifest, err
 }
 
 // fetchCurrency downloads and parses a currency.json file. A missing file
 // returns (nil, nil) so callers can fall back to the section-global currency.
-func fetchCurrency(rawURL string) ([]Currency, error) {
-	var currencies []Currency
+func fetchCurrency(rawURL string) ([]model.Currency, error) {
+	var currencies []model.Currency
 	if err := fetchJSON(rawURL, &currencies); err != nil {
 		if errors.Is(err, errRemoteNotFound) {
 			return nil, nil

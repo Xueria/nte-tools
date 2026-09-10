@@ -2,6 +2,8 @@ package view
 
 import (
 	"blind-tools/model"
+	"blind-tools/model/loader"
+	"blind-tools/model/plan"
 	"errors"
 	"fmt"
 	"image/color"
@@ -71,7 +73,7 @@ type plannerView struct {
 	resultBox    *fyne.Container
 	summaryLabel *widget.Label
 
-	plan             []model.PlanStep
+	plan             []plan.PlanStep
 	insufficient     bool
 	insufficientDraw int
 }
@@ -308,7 +310,7 @@ func (v *plannerView) boxFor(nodeID string) (*model.BlindBox, bool) {
 func (v *plannerView) refresh() {
 	var status string
 
-	if local, err := model.LoadLocalBoxes(model.DataDirectory); err != nil {
+	if local, err := loader.LoadLocalBoxes(loader.DataDirectory); err != nil {
 		status = fmt.Sprintf("本地加载失败：%v", err)
 	} else {
 		v.localAll = local
@@ -325,7 +327,7 @@ func (v *plannerView) startRemoteLoad() {
 	v.tree.Refresh()
 
 	go func() {
-		boxes, err := model.LoadRemoteBoxes(model.DefaultRemoteBaseURL)
+		boxes, err := loader.LoadRemoteBoxes(loader.DefaultRemoteBaseURL)
 
 		fyne.Do(func() {
 			v.remoteLoading = false
@@ -460,7 +462,7 @@ func (v *plannerView) calculate() {
 		end = start
 	}
 
-	result := model.CalculatePlan(*v.selected, start, end, balances, v.preferredCurrencyID())
+	result := plan.CalculatePlan(*v.selected, start, end, balances, v.preferredCurrencyID())
 
 	v.plan = result.Steps
 	v.insufficient = result.Insufficient
@@ -483,10 +485,10 @@ func (v *plannerView) preferredCurrencyID() string {
 }
 
 // updateSummary renders final balances and any insufficiency notice.
-func (v *plannerView) updateSummary(result model.PlanResult) {
+func (v *plannerView) updateSummary(result plan.PlanResult) {
 	parts := make([]string, 0, len(result.Final))
-	for _, id := range model.SortedCurrencyIDs(*v.selected) {
-		parts = append(parts, fmt.Sprintf("%s %d", model.CurrencyName(*v.selected, id), result.Final[id]))
+	for _, id := range plan.SortedCurrencyIDs(*v.selected) {
+		parts = append(parts, fmt.Sprintf("%s %d", plan.CurrencyName(*v.selected, id), result.Final[id]))
 	}
 	summary := "剩余货币：" + strings.Join(parts, "，")
 	if result.Insufficient {

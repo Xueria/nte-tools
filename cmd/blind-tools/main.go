@@ -2,6 +2,7 @@ package main
 
 import (
 	"blind-tools/model"
+	"blind-tools/model/loader"
 	"blind-tools/res"
 	"blind-tools/view"
 
@@ -28,7 +29,7 @@ func main() {
 }
 
 func loadLocalData() {
-	boxes, _ = model.LoadLocalBoxes(model.DataDirectory)
+	boxes, _ = loader.LoadLocalBoxes(loader.DataDirectory)
 }
 
 func setupMetadata() {

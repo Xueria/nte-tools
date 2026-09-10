@@ -1,4 +1,4 @@
-package model
+package bid
 
 // BidItem 竞拍单格中的一件拍品：名称、品质与该格的成交价格。
 type BidItem struct {
