@@ -22,41 +22,36 @@ const (
 	compositionRowMinWidth float32 = 240
 	// compositionTextSize 结果行的字号。
 	compositionTextSize float32 = 12
-	// filterRowHeight、filterRowMinWidth 筛选行的高度与建议最小宽度。
-	filterRowHeight   float32 = 28
-	filterRowMinWidth float32 = 200
-	// filterBoxSize、filterDotSize、filterPriceWidth 筛选行里勾选框、品质色块
-	// 的尺寸以及价格列的宽度。
-	filterBoxSize    float32 = 14
-	filterDotSize    float32 = 8
-	filterPriceWidth float32 = 74
+	// chipPanelRatio 标签区在上下分栏中的初始占比。
+	chipPanelRatio = 0.45
 )
 
-// Bid 是「单格推测」页：左侧勾选可能出现的单格物品，右侧输入单格均价与数量
-// 区间，列出可能的物品组成。
+// Bid 是「单格推测」页：勾选可能出现的单格物品，输入单格均价与数量区间，
+// 列出可能的物品组成。
 type Bid struct {
 	root fyne.CanvasObject
 
-	// 左上：参与推测的物品筛选
+	// 输入
+	avgEntry *widget.Entry
+	minEntry *widget.Entry
+	maxEntry *widget.Entry
+
+	// 物品标签
 	searchEntry    *widget.Entry
 	selectionLabel *widget.Label
-	filterBox      *fyne.Container
+	chipFlow       *chipFlow
 	items          []bid.Item
 	selected       []bool
-	rows           []*filterRow
+	chips          []*chip
 	visible        []int
 
-	// 右上：输入与结果
-	avgEntry    *widget.Entry
-	minEntry    *widget.Entry
-	maxEntry    *widget.Entry
+	// 结果
 	statusLabel *widget.Label
 	headerLabel *widget.Label
 	resultList  *widget.List
-
-	results   []bid.Composition
-	truncated bool
-	inferred  bool
+	results     []bid.Composition
+	truncated   bool
+	inferred    bool
 
 	// OnInfer 由装配层赋值：用户点「推测」时触发，页面本身不做推测。
 	OnInfer func(items []bid.Item, avg, minCount, maxCount int)
@@ -74,15 +69,15 @@ func (v *Bid) NewTab() Tab {
 	return Tab{Title: "单格推测", Icon: theme.SearchIcon(), Content: v.root}
 }
 
-// SetCellItems 用可参与推测的单格物品重建筛选列表，并默认全部勾选。
+// SetCellItems 用可参与推测的单格物品重建标签区，并默认全部勾选。
 func (v *Bid) SetCellItems(items []bid.Item) {
 	v.items = items
 	v.selected = make([]bool, len(items))
-	v.rows = make([]*filterRow, 0, len(items))
+	v.chips = make([]*chip, 0, len(items))
 
 	for i := range v.selected {
 		v.selected[i] = true
-		v.rows = append(v.rows, newFilterRow(v))
+		v.chips = append(v.chips, newChip(v))
 	}
 
 	v.applyFilter(v.searchEntry.Text)
@@ -112,10 +107,8 @@ func (v *Bid) SetStatus(text string) {
 	}
 }
 
-// build 组装左侧筛选栏与右侧输入、结果列表。
+// build 组装上方输入、中部物品标签与下方结果列表。
 func (v *Bid) build() fyne.CanvasObject {
-	left := v.buildFilter()
-
 	v.avgEntry = newCountEntry("例如 5000")
 	v.minEntry = newCountEntry("1")
 	v.maxEntry = newCountEntry("10")
@@ -135,6 +128,23 @@ func (v *Bid) build() fyne.CanvasObject {
 	v.statusLabel.Hide()
 
 	v.headerLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	v.selectionLabel = widget.NewLabel("")
+
+	v.searchEntry = widget.NewEntry()
+	v.searchEntry.SetPlaceHolder("搜索物品…")
+	v.searchEntry.OnChanged = v.applyFilter
+
+	buttons := container.NewHBox(
+		widget.NewButton("全选", func() { v.setVisibleChecked(true) }),
+		widget.NewButton("反选", v.invertVisible),
+		widget.NewButton("清空", func() { v.setVisibleChecked(false) }),
+	)
+	controls := container.NewBorder(nil, nil, nil, buttons, v.searchEntry)
+
+	v.chipFlow = newChipFlow()
+	// 滚动条浮在内容之上，把它的宽度留在内容右侧，最右一个标签才不会被压住。
+	chipContent := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), v.chipFlow)
+	chipScroll := container.NewVScroll(chipContent)
 
 	v.resultList = widget.NewList(
 		func() int { return len(v.results) },
@@ -146,50 +156,26 @@ func (v *Bid) build() fyne.CanvasObject {
 
 	v.updateHeader()
 
-	top := container.NewVBox(form, inferButton, v.statusLabel, v.headerLabel, widget.NewSeparator())
-	right := container.NewBorder(top, nil, nil, nil, v.resultList)
-
-	// 内侧留空隙，让左右两块面板读起来是独立表面。
-	left = container.New(layout.NewCustomPaddedLayout(0, 0, 0, 8), left)
-	right = container.New(layout.NewCustomPaddedLayout(0, 0, 8, 0), right)
-
-	split := container.NewHSplit(left, right)
-	split.Offset = 0.32
-
-	return split
-}
-
-// buildFilter 构建左侧的物品筛选栏。
-func (v *Bid) buildFilter() fyne.CanvasObject {
-	header := widget.NewLabelWithStyle("参与推测的物品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-
-	v.selectionLabel = widget.NewLabel("")
-
-	v.searchEntry = widget.NewEntry()
-	v.searchEntry.SetPlaceHolder("搜索物品…")
-	v.searchEntry.OnChanged = v.applyFilter
-
-	v.filterBox = container.NewVBox()
-	// 滚动条浮在内容之上，把它的宽度留在内容右侧，勾选框与价格才不会被压住。
-	content := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), v.filterBox)
-	scroll := container.NewVScroll(content)
-
-	buttons := container.NewHBox(
-		widget.NewButton("全选", func() { v.setVisibleChecked(true) }),
-		widget.NewButton("反选", v.invertVisible),
-		widget.NewButton("清空", func() { v.setVisibleChecked(false) }),
+	top := container.NewVBox(
+		form,
+		inferButton,
+		v.statusLabel,
+		v.headerLabel,
+		controls,
+		widget.NewSeparator(),
 	)
 
-	top := container.NewVBox(header, v.selectionLabel, v.searchEntry, widget.NewSeparator())
+	panels := container.NewVSplit(chipScroll, v.resultList)
+	panels.Offset = chipPanelRatio
 
-	return container.NewBorder(top, buttons, nil, nil, scroll)
+	return container.NewBorder(top, nil, nil, nil, panels)
 }
 
-// applyFilter 按关键字过滤筛选列表；只影响显示，不改动勾选状态。
+// applyFilter 按关键字过滤标签区；只影响显示，不改动勾选状态。
 func (v *Bid) applyFilter(query string) {
 	key := strings.ToLower(strings.TrimSpace(query))
 	v.visible = v.visible[:0]
-	objects := make([]fyne.CanvasObject, 0, len(v.items))
+	chips := make([]fyne.CanvasObject, 0, len(v.items))
 
 	for i, item := range v.items {
 		if key != "" && !matchesItem(item, key) {
@@ -197,12 +183,11 @@ func (v *Bid) applyFilter(query string) {
 		}
 
 		v.visible = append(v.visible, i)
-		v.rows[i].set(i, item, v.selected[i])
-		objects = append(objects, v.rows[i])
+		v.chips[i].set(i, item, v.selected[i])
+		chips = append(chips, v.chips[i])
 	}
 
-	v.filterBox.Objects = objects
-	v.filterBox.Refresh()
+	v.chipFlow.setChips(chips)
 }
 
 // matchesItem 判断物品是否匹配搜索关键字（名称、品质标识与品质展示名）。
@@ -218,33 +203,33 @@ func matchesItem(item bid.Item, key string) bool {
 	return false
 }
 
-// toggle 切换某一行的勾选状态。
+// toggle 切换某个标签的勾选状态。
 func (v *Bid) toggle(index int) {
 	if index < 0 || index >= len(v.selected) {
 		return
 	}
 
 	v.selected[index] = !v.selected[index]
-	v.rows[index].set(index, v.items[index], v.selected[index])
+	v.chips[index].set(index, v.items[index], v.selected[index])
 
 	v.updateSelectionLabel()
 }
 
-// setVisibleChecked 把当前可见的行整体勾选或取消。
+// setVisibleChecked 把当前可见的标签整体勾选或取消。
 func (v *Bid) setVisibleChecked(checked bool) {
 	for _, index := range v.visible {
 		v.selected[index] = checked
-		v.rows[index].set(index, v.items[index], checked)
+		v.chips[index].set(index, v.items[index], checked)
 	}
 
 	v.updateSelectionLabel()
 }
 
-// invertVisible 反转当前可见行的勾选状态。
+// invertVisible 反转当前可见标签的勾选状态。
 func (v *Bid) invertVisible() {
 	for _, index := range v.visible {
 		v.selected[index] = !v.selected[index]
-		v.rows[index].set(index, v.items[index], v.selected[index])
+		v.chips[index].set(index, v.items[index], v.selected[index])
 	}
 
 	v.updateSelectionLabel()
@@ -276,7 +261,7 @@ func (v *Bid) selectedItems() []bid.Item {
 	return items
 }
 
-// updateHeader 刷新顶部摘要：可用物品数与本次推测的可能数。
+// updateHeader 刷新摘要：可用物品数与本次推测的可能数。
 func (v *Bid) updateHeader() {
 	parts := []string{fmt.Sprintf("单格（1x1）物品 %d 件", len(v.items))}
 
@@ -357,145 +342,6 @@ func parseCount(text string) (int, bool) {
 	return value, true
 }
 
-// filterRow 筛选列表里的一行：勾选框、品质色块、名称与价格，点整行即切换勾选。
-type filterRow struct {
-	widget.BaseWidget
-
-	page    *Bid
-	index   int
-	item    bid.Item
-	checked bool
-}
-
-// newFilterRow 构建一行空筛选行，内容由 set 填充。
-func newFilterRow(page *Bid) *filterRow {
-	row := &filterRow{page: page}
-	row.ExtendBaseWidget(row)
-
-	return row
-}
-
-// set 设置该行对应的物品与勾选状态。
-func (r *filterRow) set(index int, item bid.Item, checked bool) {
-	r.index = index
-	r.item = item
-	r.checked = checked
-	r.Refresh()
-}
-
-// Tapped 点击整行即切换勾选。
-func (r *filterRow) Tapped(*fyne.PointEvent) {
-	if r.page != nil {
-		r.page.toggle(r.index)
-	}
-}
-
-// MinSize 返回该行的建议最小尺寸。
-func (r *filterRow) MinSize() fyne.Size {
-	r.ExtendBaseWidget(r)
-
-	return fyne.NewSize(filterRowMinWidth, filterRowHeight)
-}
-
-// CreateRenderer 创建该行的绘制对象。
-func (r *filterRow) CreateRenderer() fyne.WidgetRenderer {
-	box := canvas.NewRectangle(color.Transparent)
-	box.CornerRadius = 3
-	box.StrokeWidth = 1
-
-	tick := canvas.NewText("✓", color.White)
-	tick.TextSize = 10
-
-	dot := canvas.NewRectangle(color.Transparent)
-	dot.CornerRadius = 4
-
-	name := canvas.NewText("", color.White)
-	name.TextSize = compositionTextSize
-
-	price := canvas.NewText("", color.White)
-	price.TextSize = compositionTextSize
-	price.Alignment = fyne.TextAlignTrailing
-
-	renderer := &filterRowRenderer{
-		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{box, tick, dot, name, price}},
-		row:          r,
-		box:          box,
-		tick:         tick,
-		dot:          dot,
-		name:         name,
-		price:        price,
-	}
-	renderer.Refresh()
-
-	return renderer
-}
-
-type filterRowRenderer struct {
-	baseRenderer
-
-	row   *filterRow
-	box   *canvas.Rectangle
-	tick  *canvas.Text
-	dot   *canvas.Rectangle
-	name  *canvas.Text
-	price *canvas.Text
-}
-
-func (r *filterRowRenderer) Refresh() {
-	th := r.row.Theme()
-	variant := fyne.CurrentApp().Settings().ThemeVariant()
-
-	if r.row.checked {
-		r.box.FillColor = th.Color(theme.ColorNamePrimary, variant)
-		r.box.StrokeColor = r.box.FillColor
-		r.tick.Color = th.Color(theme.ColorNameForegroundOnPrimary, variant)
-		r.tick.Show()
-	} else {
-		r.box.FillColor = color.Transparent
-		r.box.StrokeColor = th.Color(theme.ColorNameInputBorder, variant)
-		r.tick.Hide()
-	}
-
-	r.dot.FillColor = qualityColor(r.row.item.Quality)
-
-	r.name.Text = r.row.item.Name
-	r.name.Color = th.Color(theme.ColorNameForeground, variant)
-
-	r.price.Text = formatValue(r.row.item.Value)
-	r.price.Color = th.Color(theme.ColorNamePrimary, variant)
-
-	canvas.Refresh(r.row)
-}
-
-func (r *filterRowRenderer) Layout(size fyne.Size) {
-	pad := float32(4)
-	lineHeight := float32(16)
-
-	r.box.Move(fyne.NewPos(pad, (size.Height-filterBoxSize)/2))
-	r.box.Resize(fyne.NewSize(filterBoxSize, filterBoxSize))
-
-	r.tick.Move(fyne.NewPos(pad+3, (size.Height-filterBoxSize)/2-1))
-	r.tick.Resize(fyne.NewSize(filterBoxSize, filterBoxSize))
-
-	dotLeft := pad + filterBoxSize + 6
-	r.dot.Move(fyne.NewPos(dotLeft, (size.Height-filterDotSize)/2))
-	r.dot.Resize(fyne.NewSize(filterDotSize, filterDotSize))
-
-	priceLeft := size.Width - filterPriceWidth
-	r.price.Move(fyne.NewPos(priceLeft, (size.Height-lineHeight)/2))
-	r.price.Resize(fyne.NewSize(filterPriceWidth, lineHeight))
-
-	nameLeft := dotLeft + filterDotSize + 6
-	nameWidth := priceLeft - nameLeft - pad
-	r.name.Move(fyne.NewPos(nameLeft, (size.Height-lineHeight)/2))
-	r.name.Resize(fyne.NewSize(nameWidth, lineHeight))
-	r.name.Text = fitText(r.row.item.Name, nameWidth, compositionTextSize, fyne.TextStyle{})
-}
-
-func (r *filterRowRenderer) MinSize() fyne.Size {
-	return fyne.NewSize(filterRowMinWidth, filterRowHeight)
-}
-
 // compositionRow 结果列表里的一行：件数、总价、均价，以及具体组成。
 type compositionRow struct {
 	widget.BaseWidget
@@ -559,7 +405,7 @@ func (r *compositionRowRenderer) Refresh() {
 	r.title.Color = th.Color(theme.ColorNameForeground, variant)
 
 	r.items.Color = th.Color(theme.ColorNamePlaceHolder, variant)
-	r.items.Text = fitText(describeComposition(r.row.composition), r.row.Size().Width-r.textWidth(),
+	r.items.Text = fitText(describeComposition(r.row.composition), r.textWidth(),
 		compositionTextSize, fyne.TextStyle{})
 
 	canvas.Refresh(r.row)
