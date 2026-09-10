@@ -16,8 +16,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// MainView assembles the application UI: a blind box list on the left and a
-// resource planning panel on the right.
+// MainView assembles the application UI as a tabbed shell: the blind box
+// planner (list on the left, resource planning on the right) and the auction
+// valuation page.
 func MainView(window fyne.Window, containers []model.Container) fyne.CanvasObject {
 	// Apply the Material Design 3 theme for the whole app.
 	if a := fyne.CurrentApp(); a != nil {
@@ -34,7 +35,15 @@ func MainView(window fyne.Window, containers []model.Container) fyne.CanvasObjec
 	// Load the remote section in the background so startup is not blocked.
 	v.startRemoteLoad()
 
-	return root
+	tabs := container.NewAppTabs(
+		container.NewTabItemWithIcon("盲盒规划", theme.HomeIcon(), root),
+		container.NewTabItemWithIcon("竞拍估价", theme.SearchIcon(), newAuctionView()),
+		container.NewTabItemWithIcon("拍品清单", theme.ListIcon(), newItemListView()),
+	)
+	// Keep the tab bar compact so both pages get the full window height.
+	tabs.SetTabLocation(container.TabLocationTop)
+
+	return tabs
 }
 
 // mainView holds the mutable UI state.
