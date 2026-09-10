@@ -3,7 +3,7 @@ package view
 import "image/color"
 
 // qualitySwatchSize 品质色块的边长。
-const qualitySwatchSize float32 = 12
+const qualitySwatchSize float32 = 8
 
 // qualityLabels 品质标识的展示名，键与数据里的 quality 一致。
 var qualityLabels = map[string]string{

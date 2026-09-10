@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"strconv"
+	"strings"
 
 	"blind-tools/model/bid"
 
@@ -18,26 +19,36 @@ import (
 const (
 	// previewCellSize 占格预览里单个格子的边长。
 	previewCellSize float32 = 34
-	// itemCardWidth、itemCardHeight 拍品卡片的尺寸，GridWrap 按它换行。
-	itemCardWidth  float32 = 190
-	itemCardHeight float32 = 96
-	// itemRowHeight 卡片里每一行的高度。
-	itemRowHeight float32 = 24
+	// cardMinWidth 卡片的最小宽度：列数由可用宽度能放下多少个它决定。
+	cardMinWidth float32 = 110
+	// itemCardHeight 卡片高度；卡片内三行自上而下按固定行高排布。
+	itemCardHeight float32 = 62
+	// cardMinGap、cardMaxGap 卡片间距的下限与上限：列间剩余宽度会动态
+	// 分到间距上，超过上限的部分改为把卡片均分撑满，右边缘始终贴齐。
+	cardMinGap float32 = 6
+	cardMaxGap float32 = 12
+	// cardInset 卡片内容与卡片边缘的距离。
+	cardInset float32 = 6
+	// cardQualityRowHeight、cardRowHeight 卡片内品质行与文字行的高度。
+	cardQualityRowHeight float32 = 14
+	cardRowHeight        float32 = 16
+	// cardNameTextSize、cardQualityTextSize 卡片内的字号。
+	cardNameTextSize    float32 = 12
+	cardQualityTextSize float32 = 11
 )
 
 // Items 是「拍品清单」页：左侧按占格类型筛选，右侧画出该类型的占格并列出拍品卡片。
 type Items struct {
 	root fyne.CanvasObject
 
-	// grids 是全部占格数据，shown 是当前选中类型下的拍品。
 	grids []bid.Grid
-	shown []bid.Item
 
 	typeList     *widget.List
 	statusLabel  *widget.Label
 	previewLabel *widget.Label
 	previewBox   *fyne.Container
-	cardGrid     *widget.GridWrap
+	cardWall     *cardWall
+	cardScroll   *container.Scroll
 }
 
 // NewItems 构建拍品清单页。
@@ -61,8 +72,7 @@ func (v *Items) SetBidGrids(grids []bid.Grid) {
 		v.previewLabel.SetText("暂无竞拍数据")
 		v.previewBox.Objects = nil
 		v.previewBox.Refresh()
-		v.shown = nil
-		v.cardGrid.Refresh()
+		v.cardWall.setCards(nil)
 		return
 	}
 
@@ -104,20 +114,15 @@ func (v *Items) build() fyne.CanvasObject {
 	v.previewLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	v.previewBox = container.NewVBox()
 
-	v.cardGrid = widget.NewGridWrap(
-		func() int { return len(v.shown) },
-		func() fyne.CanvasObject { return newItemCard() },
-		func(id widget.GridWrapItemID, obj fyne.CanvasObject) {
-			obj.(*itemCard).set(v.shown[id])
-		},
-	)
+	v.cardWall = newCardWall()
+	v.cardScroll = container.NewVScroll(v.cardWall)
 
 	preview := container.NewVBox(v.previewLabel, v.previewBox, widget.NewSeparator())
 
 	// 内侧留空隙，让左右两块面板读起来是独立表面。
 	left = container.New(layout.NewCustomPaddedLayout(0, 0, 0, 8), left)
 	right := container.New(layout.NewCustomPaddedLayout(0, 0, 8, 0),
-		container.NewBorder(preview, nil, nil, nil, v.cardGrid))
+		container.NewBorder(preview, nil, nil, nil, v.cardScroll))
 
 	split := container.NewHSplit(left, right)
 	split.Offset = 0.22
@@ -137,11 +142,19 @@ func (v *Items) selectGrid(index int) {
 	v.previewBox.Objects = []fyne.CanvasObject{footprint(grid.Length, grid.Width)}
 	v.previewBox.Refresh()
 
-	v.shown = grid.Items
-	// 换类型时回到顶部：用 ScrollToOffset 而非 ScrollToTop，
-	// 后者在渲染器尚未创建时会解引用空的 scroller。
-	v.cardGrid.ScrollToOffset(0)
-	v.cardGrid.Refresh()
+	cards := make([]fyne.CanvasObject, 0, len(grid.Items))
+
+	for _, item := range grid.Items {
+		card := newItemCard()
+		card.set(item)
+		cards = append(cards, card)
+	}
+
+	v.cardWall.setCards(cards)
+
+	// 换类型时回到顶部。
+	v.cardScroll.Offset = fyne.NewPos(0, 0)
+	v.cardScroll.Refresh()
 }
 
 // footprint 画出 length 列、width 行的占格形状。
@@ -170,9 +183,139 @@ func previewCell() fyne.CanvasObject {
 	return cell
 }
 
+// cardWall 把卡片按可用宽度分列摆放：列数随宽度自适应，列间剩余宽度
+// 动态分到间距上，因此右侧不会留下空白。
+type cardWall struct {
+	widget.BaseWidget
+
+	cards   []fyne.CanvasObject
+	columns int
+	rows    int
+}
+
+// newCardWall 构建一个空的卡片墙。
+func newCardWall() *cardWall {
+	wall := &cardWall{columns: 1, rows: 1}
+	wall.ExtendBaseWidget(wall)
+	return wall
+}
+
+// setCards 用新的卡片替换墙面内容。
+func (w *cardWall) setCards(cards []fyne.CanvasObject) {
+	w.cards = cards
+	w.columns, w.rows = 1, 1
+	w.Refresh()
+}
+
+// MinSize 返回当前列数下的整体尺寸。
+func (w *cardWall) MinSize() fyne.Size {
+	w.ExtendBaseWidget(w)
+
+	if len(w.cards) == 0 {
+		return fyne.NewSize(cardMinWidth, 0)
+	}
+
+	return fyne.NewSize(cardMinWidth, w.contentHeight())
+}
+
+// contentHeight 返回所有行叠起来的高度。
+func (w *cardWall) contentHeight() float32 {
+	rows := w.rows
+	if rows < 1 {
+		rows = 1
+	}
+
+	return float32(rows)*itemCardHeight + float32(rows-1)*cardMinGap
+}
+
+// CreateRenderer 创建卡片墙的绘制对象。
+func (w *cardWall) CreateRenderer() fyne.WidgetRenderer {
+	return &cardWallRenderer{baseRenderer: baseRenderer{}, wall: w}
+}
+
+type cardWallRenderer struct {
+	baseRenderer
+
+	wall *cardWall
+}
+
+func (r *cardWallRenderer) Layout(size fyne.Size) {
+	cards := r.wall.cards
+	r.SetObjects(cards)
+
+	if len(cards) == 0 {
+		return
+	}
+
+	columns := cardColumnsFor(size.Width, len(cards))
+	cardWidth, gap := cardMetrics(size.Width, columns)
+
+	rows := (len(cards) + columns - 1) / columns
+	changed := columns != r.wall.columns || rows != r.wall.rows
+	r.wall.columns, r.wall.rows = columns, rows
+
+	for i, card := range cards {
+		row, column := i/columns, i%columns
+
+		card.Move(fyne.NewPos(float32(column)*(cardWidth+gap), float32(row)*(itemCardHeight+cardMinGap)))
+		card.Resize(fyne.NewSize(cardWidth, itemCardHeight))
+	}
+
+	if changed {
+		// 列数或行数变了，MinSize 随之变化，请父级（滚动容器）重新布局。
+		canvas.Refresh(r.wall)
+	}
+}
+
+func (r *cardWallRenderer) Refresh() {
+	r.SetObjects(r.wall.cards)
+	canvas.Refresh(r.wall)
+}
+
+func (r *cardWallRenderer) MinSize() fyne.Size {
+	return r.wall.MinSize()
+}
+
+// cardColumnsFor 返回给定宽度放下多少列卡片。
+func cardColumnsFor(width float32, count int) int {
+	if width <= 0 || count < 1 {
+		return 1
+	}
+
+	columns := int((width + cardMinGap) / (cardMinWidth + cardMinGap))
+
+	if columns < 1 {
+		columns = 1
+	}
+
+	if columns > count {
+		columns = count
+	}
+
+	return columns
+}
+
+// cardMetrics 返回卡片宽度与列间距：剩余宽度先分给间距，超过上限后
+// 改为把卡片均分撑满，保证最右侧与左边缘一样贴齐。
+func cardMetrics(width float32, columns int) (cardWidth, gap float32) {
+	if columns < 2 {
+		return width, 0
+	}
+
+	gap = (width - cardMinWidth*float32(columns)) / float32(columns-1)
+
+	if gap <= cardMaxGap {
+		return cardMinWidth, gap
+	}
+
+	gap = cardMaxGap
+
+	return (width - gap*float32(columns-1)) / float32(columns), gap
+}
+
 // itemCard 是拍品清单里的一张拍品卡片：品质色块与品质名、名称、价格。
-// 它自己负责绘制，尺寸固定、不随文字内容变化——GridWrap 的 item 是先创建、
-// 后由数据填充的，用嵌套容器排版会按空文字把行高算成零，文字就再也显示不出来。
+// 它自己负责绘制，尺寸与文字内容无关——卡片可能先创建、后填充数据，
+// 用嵌套容器排版会按空文字把行高算成零，文字就再也显示不出来。
 type itemCard struct {
 	widget.BaseWidget
 
@@ -192,24 +335,31 @@ func (c *itemCard) set(item bid.Item) {
 	c.Refresh()
 }
 
-// MinSize 返回卡片尺寸，GridWrap 按它换行。
+// MinSize 返回卡片的建议最小尺寸。
 func (c *itemCard) MinSize() fyne.Size {
 	c.ExtendBaseWidget(c)
-	return fyne.NewSize(itemCardWidth, itemCardHeight)
+	return fyne.NewSize(cardMinWidth, itemCardHeight)
 }
 
 // CreateRenderer 创建卡片的绘制对象。
 func (c *itemCard) CreateRenderer() fyne.WidgetRenderer {
 	background := canvas.NewRectangle(color.Transparent)
-	background.CornerRadius = 10
+	background.CornerRadius = 8
+	background.StrokeWidth = 1
 
 	swatch := canvas.NewRectangle(color.Transparent)
 	swatch.CornerRadius = 2
 
 	quality := canvas.NewText("", color.White)
+	quality.TextSize = cardQualityTextSize
+
 	name := canvas.NewText("", color.White)
+	name.TextSize = cardNameTextSize
+
 	value := canvas.NewText("", color.White)
 	value.Alignment = fyne.TextAlignTrailing
+	value.TextSize = cardNameTextSize
+	value.TextStyle = fyne.TextStyle{Bold: true}
 
 	r := &itemCardRenderer{
 		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{background, swatch, quality, name, value}},
@@ -240,41 +390,101 @@ func (r *itemCardRenderer) Refresh() {
 	variant := fyne.CurrentApp().Settings().ThemeVariant()
 
 	r.background.FillColor = th.Color(theme.ColorNameOverlayBackground, variant)
+	r.background.StrokeColor = th.Color(theme.ColorNameSeparator, variant)
+
 	r.swatch.FillColor = qualityColor(r.card.item.Quality)
 
 	r.quality.Text = qualityLabel(r.card.item.Quality)
-	r.name.Text = r.card.item.Name
-	r.value.Text = strconv.Itoa(r.card.item.Value)
+	r.quality.Color = qualityColor(r.card.item.Quality)
 
-	r.quality.Color = th.Color(theme.ColorNameForeground, variant)
 	r.name.Color = th.Color(theme.ColorNameForeground, variant)
-	r.value.Color = th.Color(theme.ColorNameForeground, variant)
+
+	r.value.Text = formatValue(r.card.item.Value)
+	r.value.Color = th.Color(theme.ColorNamePrimary, variant)
+
+	r.fitName(r.card.Size().Width - cardInset*2)
 
 	canvas.Refresh(r.card)
 }
 
 func (r *itemCardRenderer) Layout(size fyne.Size) {
-	pad := r.card.Theme().Size(theme.SizeNamePadding)
-	left := pad * 2
-	textWidth := size.Width - pad*4
+	textWidth := size.Width - cardInset*2
 
 	r.background.Resize(size)
 
-	r.swatch.Move(fyne.NewPos(left, left))
+	r.swatch.Move(fyne.NewPos(cardInset, cardInset+(cardQualityRowHeight-qualitySwatchSize)/2))
 	r.swatch.Resize(fyne.NewSize(qualitySwatchSize, qualitySwatchSize))
 
-	r.quality.Move(fyne.NewPos(left+qualitySwatchSize+pad, left))
-	r.quality.Resize(fyne.NewSize(textWidth-qualitySwatchSize-pad, itemRowHeight))
+	qualityLeft := cardInset + qualitySwatchSize + 4
+	r.quality.Move(fyne.NewPos(qualityLeft, cardInset))
+	r.quality.Resize(fyne.NewSize(textWidth-qualitySwatchSize-4, cardQualityRowHeight))
 
-	r.name.Move(fyne.NewPos(left, left+itemRowHeight+pad))
-	r.name.Resize(fyne.NewSize(textWidth, itemRowHeight))
+	nameTop := cardInset + cardQualityRowHeight + 2
+	r.name.Move(fyne.NewPos(cardInset, nameTop))
+	r.name.Resize(fyne.NewSize(textWidth, cardRowHeight))
 
-	r.value.Move(fyne.NewPos(left, left+2*(itemRowHeight+pad)))
-	r.value.Resize(fyne.NewSize(textWidth, itemRowHeight))
+	r.value.Move(fyne.NewPos(cardInset, nameTop+cardRowHeight+2))
+	r.value.Resize(fyne.NewSize(textWidth, cardRowHeight))
+
+	r.fitName(textWidth)
 }
 
 func (r *itemCardRenderer) MinSize() fyne.Size {
-	return fyne.NewSize(itemCardWidth, itemCardHeight)
+	return fyne.NewSize(cardMinWidth, itemCardHeight)
+}
+
+// fitName 按可用宽度截断名称，超出部分用省略号。
+func (r *itemCardRenderer) fitName(width float32) {
+	r.name.Text = fitText(r.card.item.Name, width, cardNameTextSize, fyne.TextStyle{})
+}
+
+// fitText 把文本截断到给定宽度内，超出部分用省略号；宽度未知时原样返回。
+func fitText(text string, maxWidth, textSize float32, style fyne.TextStyle) string {
+	if text == "" || maxWidth <= 0 {
+		return text
+	}
+
+	if fyne.MeasureText(text, textSize, style).Width <= maxWidth {
+		return text
+	}
+
+	runes := []rune(text)
+
+	for len(runes) > 1 {
+		runes = runes[:len(runes)-1]
+
+		if fyne.MeasureText(string(runes)+"…", textSize, style).Width <= maxWidth {
+			return string(runes) + "…"
+		}
+	}
+
+	return "…"
+}
+
+// formatValue 给价格加千分位，便于读七位数。
+func formatValue(value int) string {
+	digits := strconv.Itoa(value)
+
+	if len(digits) <= 3 {
+		return digits
+	}
+
+	lead := len(digits) % 3
+	var text strings.Builder
+
+	if lead > 0 {
+		text.WriteString(digits[:lead])
+	}
+
+	for i := lead; i < len(digits); i += 3 {
+		if text.Len() > 0 {
+			text.WriteByte(',')
+		}
+
+		text.WriteString(digits[i : i+3])
+	}
+
+	return text.String()
 }
 
 // gridTypeLabel 生成类型选择器里的一行：占格尺寸与拍品数。
