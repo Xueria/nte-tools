@@ -23,7 +23,7 @@ const (
 
 func main() {
 	setupMetadata()
-	runMainWindow()
+	setupMainWindowAndRun()
 }
 
 func setupMetadata() {
@@ -41,7 +41,7 @@ func setupMetadata() {
 	})
 }
 
-func runMainWindow() {
+func setupMainWindowAndRun() {
 	application := app.NewWithID(appID)
 	window := application.NewWindow(windowTitle)
 
