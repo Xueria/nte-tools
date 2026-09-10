@@ -507,8 +507,9 @@ func (r *compositionRowRenderer) textWidth() float32 {
 	return r.row.Size().Width - cardInset*2 - scrollBarInset()
 }
 
-// compositionTitle 生成结果行的摘要：件数、总价与均价。
+// compositionTitle 生成结果行的摘要：总价、件数与均价。总价放在最前面，
+// 列表是按总价从低到高排的，这样一眼就能核对顺序。
 func compositionTitle(composition bid.Composition) string {
-	return fmt.Sprintf("%d 件 · 总价 %s · 均价 %s",
-		composition.Count, formatValue(composition.Total), formatAverage(composition.Average()))
+	return fmt.Sprintf("总价 %s · %d 件 · 均价 %s",
+		formatValue(composition.Total), composition.Count, formatAverage(composition.Average()))
 }
