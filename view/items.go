@@ -20,11 +20,13 @@ const (
 	previewCellSize float32 = 34
 	// itemCardWidth、itemCardHeight 拍品卡片的尺寸，GridWrap 按它换行。
 	itemCardWidth  float32 = 190
-	itemCardHeight float32 = 92
-	// itemNameWidth、itemNameHeight 卡片里名称的固定显示区，
-	// 超出部分交给 Label 的省略号截断，避免长名字把卡片撑宽。
-	itemNameWidth  float32 = 170
-	itemNameHeight float32 = 22
+	itemCardHeight float32 = 96
+	// itemRowHeight 卡片里每一行的固定高度，itemNameWidth、itemQualityWidth
+	// 是名称与品质显示区的固定宽度。卡片是先创建、后由数据填充的，布局必须
+	// 与文字内容无关，否则文字会在填充前就被挤成零尺寸。
+	itemRowHeight    float32 = 24
+	itemNameWidth    float32 = 170
+	itemQualityWidth float32 = 60
 )
 
 // Items 是「拍品清单」页：左侧按占格类型筛选，右侧画出该类型的占格并列出拍品卡片。
@@ -199,8 +201,11 @@ func newItemCard() *itemCard {
 
 	value := widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{Bold: true})
 
-	nameBox := container.NewGridWrap(fyne.NewSize(itemNameWidth, itemNameHeight), name)
-	content := container.NewVBox(container.NewHBox(swatch, quality), nameBox, value)
+	content := container.NewVBox(
+		container.NewHBox(swatch, fixedCell(itemQualityWidth, quality)),
+		fixedCell(itemNameWidth, name),
+		fixedCell(itemNameWidth, value),
+	)
 
 	return &itemCard{
 		Container: container.NewStack(background, container.NewPadded(content)),
@@ -209,6 +214,11 @@ func newItemCard() *itemCard {
 		swatch:    swatch,
 		value:     value,
 	}
+}
+
+// fixedCell 把控件放进固定尺寸的显示区，让卡片布局与文字内容无关。
+func fixedCell(width float32, object fyne.CanvasObject) fyne.CanvasObject {
+	return container.NewGridWrap(fyne.NewSize(width, itemRowHeight), object)
 }
 
 // set 用一条拍品数据填充卡片。
