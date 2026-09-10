@@ -24,6 +24,9 @@ const (
 	compositionTextSize float32 = 12
 	// filterPanelRatio 左侧筛选栏在左右分栏中的初始占比，默认对半分。
 	filterPanelRatio = 0.5
+	// minItemCount、defaultMaxItemCount 数量区间滑块的起点与默认上限。
+	minItemCount        = 1
+	defaultMaxItemCount = 10
 )
 
 // Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价与数量区间，
@@ -32,9 +35,9 @@ type Bid struct {
 	root fyne.CanvasObject
 
 	// 输入
-	avgEntry *widget.Entry
-	minEntry *widget.Entry
-	maxEntry *widget.Entry
+	avgEntry    *widget.Entry
+	countSlider *RangeSlider
+	countLabel  *widget.Label
 
 	// 已确认物品
 	searchEntry    *widget.Entry
@@ -80,6 +83,7 @@ func (v *Bid) SetCellItems(items []bid.Item) {
 		v.chips = append(v.chips, newChip(v))
 	}
 
+	v.configureCountSlider()
 	v.applyFilter(v.searchEntry.Text)
 	v.updateSelectionLabel()
 	v.updateHeader()
@@ -112,15 +116,17 @@ func (v *Bid) build() fyne.CanvasObject {
 	left := v.buildFilter()
 
 	v.avgEntry = newCountEntry("例如 5000")
-	v.minEntry = newCountEntry("1")
-	v.maxEntry = newCountEntry("10")
 
-	countRow := container.NewHBox(v.minEntry, widget.NewLabel("～"), v.maxEntry)
+	form := widget.NewForm(widget.NewFormItem("单格均价", v.avgEntry))
 
-	form := widget.NewForm(
-		widget.NewFormItem("单格均价", v.avgEntry),
-		widget.NewFormItem("数量区间", countRow),
-	)
+	countTitle := widget.NewLabelWithStyle("数量区间", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
+	v.countLabel = widget.NewLabel("")
+
+	v.countSlider = NewRangeSlider(minItemCount, minItemCount)
+	v.countSlider.Step = 1
+	v.countSlider.OnChanged = func(_, _ float64) { v.updateCountLabel() }
+	v.configureCountSlider()
 
 	inferButton := widget.NewButton("推测", v.infer)
 	inferButton.Importance = widget.HighImportance
@@ -141,7 +147,16 @@ func (v *Bid) build() fyne.CanvasObject {
 
 	v.updateHeader()
 
-	top := container.NewVBox(form, inferButton, v.statusLabel, v.headerLabel, widget.NewSeparator())
+	top := container.NewVBox(
+		form,
+		countTitle,
+		v.countSlider,
+		v.countLabel,
+		inferButton,
+		v.statusLabel,
+		v.headerLabel,
+		widget.NewSeparator(),
+	)
 	right := container.NewBorder(top, nil, nil, nil, v.resultList)
 
 	// 内侧留空隙，让左右两块面板读起来是独立表面。
@@ -176,6 +191,36 @@ func (v *Bid) buildFilter() fyne.CanvasObject {
 	top := container.NewVBox(header, v.selectionLabel, controls, widget.NewSeparator())
 
 	return container.NewBorder(top, nil, nil, nil, scroll)
+}
+
+// configureCountSlider 按可用物品数设置数量区间的滑块范围。
+func (v *Bid) configureCountSlider() {
+	maxCount := len(v.items)
+
+	if maxCount < minItemCount {
+		maxCount = minItemCount
+	}
+
+	upper := maxCount
+	if upper > defaultMaxItemCount {
+		upper = defaultMaxItemCount
+	}
+
+	v.countSlider.SetRange(minItemCount, float64(maxCount))
+	v.countSlider.SetValues(minItemCount, float64(upper))
+	v.updateCountLabel()
+
+	if maxCount <= minItemCount {
+		v.countSlider.Disable()
+		return
+	}
+
+	v.countSlider.Enable()
+}
+
+// updateCountLabel 刷新数量区间的说明。
+func (v *Bid) updateCountLabel() {
+	v.countLabel.SetText(fmt.Sprintf("数量 %d ～ %d 件", int(v.countSlider.Lower), int(v.countSlider.Upper)))
 }
 
 // applyFilter 按关键字过滤标签区；只影响显示，不改动勾选状态。
@@ -298,18 +343,15 @@ func (v *Bid) infer() {
 		return
 	}
 
-	minCount, ok := parseCount(v.minEntry.Text)
+	minCount := int(v.countSlider.Lower)
+	maxCount := int(v.countSlider.Upper)
 
-	if !ok || minCount < 1 {
-		v.SetStatus("数量下限要填正整数")
-		return
+	if minCount < minItemCount {
+		minCount = minItemCount
 	}
 
-	maxCount, ok := parseCount(v.maxEntry.Text)
-
-	if !ok || maxCount < minCount {
-		v.SetStatus("数量上限不能小于下限")
-		return
+	if maxCount < minCount {
+		maxCount = minCount
 	}
 
 	required := v.requiredItems()
