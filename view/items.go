@@ -115,14 +115,16 @@ func (v *Items) build() fyne.CanvasObject {
 	v.previewBox = container.NewVBox()
 
 	v.cardWall = newCardWall()
-	v.cardScroll = container.NewVScroll(v.cardWall)
+	// 滚动条浮在滚动内容之上，所以把它的宽度留在内容右侧：滚动条仍停在
+	// 面板右边缘，卡片区则缩短，最右一列不会被压住。
+	cardContent := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), v.cardWall)
+	v.cardScroll = container.NewVScroll(cardContent)
 
 	preview := container.NewVBox(v.previewLabel, v.previewBox, widget.NewSeparator())
 
-	// 内侧留空隙，让左右两块面板读起来是独立表面；右侧再留出浮动滚动条
-	// 的宽度，否则它会压住最右一列的文字。
+	// 内侧留空隙，让左右两块面板读起来是独立表面。
 	left = container.New(layout.NewCustomPaddedLayout(0, 0, 0, 8), left)
-	right := container.New(layout.NewCustomPaddedLayout(0, 0, 8, scrollBarInset()),
+	right := container.New(layout.NewCustomPaddedLayout(0, 0, 8, 0),
 		container.NewBorder(preview, nil, nil, nil, v.cardScroll))
 
 	split := container.NewHSplit(left, right)
