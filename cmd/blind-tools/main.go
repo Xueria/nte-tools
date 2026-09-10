@@ -53,25 +53,16 @@ func setupMainWindowAndRun() {
 	bidPage := view.NewBid()
 	items := view.NewItems()
 
-	// cells 是单格（1x1）物品，单格推测基于它反推组成，随数据刷新一起更新。
-	var cells []bid.Item
-
 	reload := func() {
 		loadLocalBoxes(data, planner)
 		loadRemoteBoxes(data, planner)
 
-		cells = loadBidGrids(data, items)
-		bidPage.SetCellItemCount(len(cells))
+		bidPage.SetCellItems(loadBidGrids(data, items))
 	}
 	planner.OnRefresh = reload
 
-	bidPage.OnInfer = func(avg, minCount, maxCount int) {
-		if len(cells) == 0 {
-			bidPage.SetStatus("还没有可用的单格物品数据")
-			return
-		}
-
-		bidPage.SetCompositions(bid.Infer(cells, avg, minCount, maxCount))
+	bidPage.OnInfer = func(cellItems []bid.Item, avg, minCount, maxCount int) {
+		bidPage.SetCompositions(bid.Infer(cellItems, avg, minCount, maxCount))
 	}
 
 	window.SetContent(view.NewShell(
