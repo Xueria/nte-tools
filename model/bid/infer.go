@@ -37,6 +37,17 @@ type InferResult struct {
 	Truncated bool
 }
 
+// InferQuery 一次推测的条件。
+type InferQuery struct {
+	// Avg 是玩家看到的单格均价（整数）。
+	Avg int
+	// MinCount、MaxCount 是组合总件数的区间。
+	MinCount int
+	MaxCount int
+	// MaxTotal 是组合总价的上限，0 表示不限制。
+	MaxTotal int
+}
+
 // CellItems 取出单格（1x1）物品，供推测使用。
 func CellItems(grids []Grid) []Item {
 	for _, grid := range grids {
@@ -49,12 +60,13 @@ func CellItems(grids []Grid) []Item {
 }
 
 // Infer 反推可能的物品组成：required 里的物品是玩家已确认在里面的，必须出现在
-// 每个结果中；其余位置从 items 里补足。总件数落在 [minCount, maxCount] 内，且
-// 组合的真实均价与 avg 相差小于 1。游戏把均价显示成整数时，四舍五入、向下取整、
-// 向上取整三种算法下的真实均价都落在 (avg-1, avg+1) 内，所以这个口径不会漏掉
-// 真实组成。
-func Infer(items, required []Item, avg, minCount, maxCount int) InferResult {
-	if len(items) == 0 || minCount < 1 || maxCount < minCount || len(required) > maxCount {
+// 每个结果中；其余位置从 items 里补足。总件数落在 query 的区间内，总价不超过
+// query.MaxTotal，且组合的真实均价与 query.Avg 相差小于 1。游戏把均价显示成整数
+// 时，四舍五入、向下取整、向上取整三种算法下的真实均价都落在 (avg-1, avg+1) 内，
+// 所以这个口径不会漏掉真实组成。
+func Infer(items, required []Item, query InferQuery) InferResult {
+	if len(items) == 0 || query.MinCount < 1 || query.MaxCount < query.MinCount ||
+		len(required) > query.MaxCount {
 		return InferResult{}
 	}
 
@@ -68,13 +80,15 @@ func Infer(items, required []Item, avg, minCount, maxCount int) InferResult {
 		requiredTotal += item.Value
 	}
 
+	if query.MaxTotal > 0 && requiredTotal > query.MaxTotal {
+		return InferResult{}
+	}
+
 	state := &searchState{
 		items:     sorted,
 		required:  required,
 		smallest:  sorted[len(sorted)-1].Value,
-		avg:       avg,
-		minCount:  minCount,
-		maxCount:  maxCount,
+		query:     query,
 		baseCount: len(required),
 		baseSum:   requiredTotal,
 		budget:    searchBudget,
@@ -83,13 +97,13 @@ func Infer(items, required []Item, avg, minCount, maxCount int) InferResult {
 
 	result := InferResult{Compositions: state.found, Truncated: state.truncated}
 
-	// 先按件数、再按总价排序，让结果稳定可读。
+	// 按总价从低到高排列，总价相同再按件数。
 	sort.SliceStable(result.Compositions, func(i, j int) bool {
-		if result.Compositions[i].Count != result.Compositions[j].Count {
-			return result.Compositions[i].Count < result.Compositions[j].Count
+		if result.Compositions[i].Total != result.Compositions[j].Total {
+			return result.Compositions[i].Total < result.Compositions[j].Total
 		}
 
-		return result.Compositions[i].Total < result.Compositions[j].Total
+		return result.Compositions[i].Count < result.Compositions[j].Count
 	})
 
 	return result
@@ -98,12 +112,11 @@ func Infer(items, required []Item, avg, minCount, maxCount int) InferResult {
 // searchState 保存一次推测的搜索状态。walk 遍历的是「补足部分」，真实件数与
 // 真实总价要再加上已确认物品的 baseCount 与 baseSum。
 type searchState struct {
-	items     []Item
-	required  []Item
-	smallest  int
-	avg       int
-	minCount  int
-	maxCount  int
+	items    []Item
+	required []Item
+	smallest int
+	query    InferQuery
+
 	baseCount int
 	baseSum   int
 
@@ -130,11 +143,16 @@ func (s *searchState) walk(start, total int) {
 	count := s.baseCount + len(s.picked)
 	sum := s.baseSum + total
 
-	if count >= s.minCount && withinAverage(sum, count, s.avg) {
+	// 价格只增不减，总价一旦超过上限，整条分支都不必再走。
+	if s.query.MaxTotal > 0 && sum > s.query.MaxTotal {
+		return
+	}
+
+	if count >= s.query.MinCount && withinAverage(sum, count, s.query.Avg) {
 		s.found = append(s.found, buildComposition(s.required, s.picked, sum))
 	}
 
-	if count == s.maxCount {
+	if count == s.query.MaxCount {
 		return
 	}
 
@@ -156,16 +174,20 @@ func (s *searchState) walk(start, total int) {
 }
 
 // reachable 判断在补足部分 total 上再加若干件（每件不超过 maxValue、且不小于
-// 最小物品价）之后，是否存在件数不超过 maxCount、均价又落进窗口的组合。
+// 最小物品价）之后，是否存在件数不超上限、总价不超上限、均价又落进窗口的组合。
 func (s *searchState) reachable(total, maxValue int) bool {
 	count := s.baseCount + len(s.picked) + 1
 
-	for n := count; n <= s.maxCount; n++ {
+	for n := count; n <= s.query.MaxCount; n++ {
 		extra := n - count
 		low := s.baseSum + total + extra*s.smallest
 		high := s.baseSum + total + extra*maxValue
 
-		if high < windowLow(n, s.avg) || low > windowHigh(n, s.avg) {
+		if s.query.MaxTotal > 0 && high > s.query.MaxTotal {
+			high = s.query.MaxTotal
+		}
+
+		if high < windowLow(n, s.query.Avg) || low > windowHigh(n, s.query.Avg) {
 			continue
 		}
 

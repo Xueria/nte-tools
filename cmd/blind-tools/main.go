@@ -66,8 +66,8 @@ func setupMainWindowAndRun() {
 	planner.OnRefresh = reload
 
 	// required 是页面上已勾选（已确认在组合里）的物品，其余由算法从 cells 补足。
-	bidPage.OnInfer = func(required []bid.Item, avg, minCount, maxCount int) {
-		bidPage.SetCompositions(bid.Infer(cells, required, avg, minCount, maxCount))
+	bidPage.OnInfer = func(required []bid.Item, query bid.InferQuery) {
+		bidPage.SetCompositions(bid.Infer(cells, required, query))
 	}
 
 	window.SetContent(view.NewShell(

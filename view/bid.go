@@ -27,17 +27,20 @@ const (
 	// minItemCount、defaultMaxItemCount 数量区间滑块的起点与默认上限。
 	minItemCount        = 1
 	defaultMaxItemCount = 10
+	// defaultMaxTotal 组合总价上限的默认值：1000 万。
+	defaultMaxTotal = 10_000_000
 )
 
-// Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价与数量区间，
-// 由算法从全部单格物品里补足其余位置，列出可能的物品组成。
+// Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价、数量区间与
+// 总价上限，由算法从全部单格物品里补足其余位置，列出可能的物品组成。
 type Bid struct {
 	root fyne.CanvasObject
 
 	// 输入
-	avgEntry    *widget.Entry
-	countSlider *RangeSlider
-	countLabel  *widget.Label
+	avgEntry      *widget.Entry
+	maxTotalEntry *widget.Entry
+	countSlider   *RangeSlider
+	countLabel    *widget.Label
 
 	// 已确认物品
 	searchEntry    *widget.Entry
@@ -58,7 +61,7 @@ type Bid struct {
 	requiredCount int
 
 	// OnInfer 由装配层赋值：用户点「推测」时触发，页面本身不做推测。
-	OnInfer func(required []bid.Item, avg, minCount, maxCount int)
+	OnInfer func(required []bid.Item, query bid.InferQuery)
 }
 
 // NewBid 构建单格推测页。
@@ -116,8 +119,12 @@ func (v *Bid) build() fyne.CanvasObject {
 	left := v.buildFilter()
 
 	v.avgEntry = newCountEntry("例如 5000")
+	v.maxTotalEntry = newCountEntry("默认 10000000")
 
-	form := widget.NewForm(widget.NewFormItem("单格均价", v.avgEntry))
+	form := widget.NewForm(
+		widget.NewFormItem("单格均价", v.avgEntry),
+		widget.NewFormItem("总价上限", v.maxTotalEntry),
+	)
 
 	countTitle := widget.NewLabelWithStyle("数量区间", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
@@ -343,6 +350,17 @@ func (v *Bid) infer() {
 		return
 	}
 
+	maxTotal := defaultMaxTotal
+
+	if strings.TrimSpace(v.maxTotalEntry.Text) != "" {
+		maxTotal, ok = parseCount(v.maxTotalEntry.Text)
+
+		if !ok {
+			v.SetStatus("总价上限要填非负整数")
+			return
+		}
+	}
+
 	minCount := int(v.countSlider.Lower)
 	maxCount := int(v.countSlider.Upper)
 
@@ -368,7 +386,12 @@ func (v *Bid) infer() {
 	v.updateHeader()
 
 	if v.OnInfer != nil {
-		v.OnInfer(required, avg, minCount, maxCount)
+		v.OnInfer(required, bid.InferQuery{
+			Avg:      avg,
+			MinCount: minCount,
+			MaxCount: maxCount,
+			MaxTotal: maxTotal,
+		})
 	}
 }
 
