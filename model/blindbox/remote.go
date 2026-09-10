@@ -12,18 +12,6 @@ import (
 	"time"
 )
 
-// DefaultRemoteBaseURL 远程盲盒数据的 GitHub 目录。它必须指向一个
-// raw.githubusercontent.com 路径，其结构与本地 DataDirectory 一致：
-//
-//	<folder>/
-//	  currency.json          (可选的段落级全局货币)
-//	  <blind-box>/
-//	    manifest.json        (必需)
-//	    currency.json        (可选，缺失时回退到段落级全局货币)
-//
-// 置为空字符串可关闭远程数据。
-const DefaultRemoteBaseURL = "https://raw.githubusercontent.com/Xueria/blind-tools/refs/heads/master/data"
-
 const (
 	githubAPIBase = "https://api.github.com"
 	githubRawBase = "https://raw.githubusercontent.com"
@@ -36,6 +24,13 @@ var remoteHTTP = &http.Client{Timeout: 15 * time.Second}
 
 // LoadRemoteBoxes 从给定的 raw GitHub 目录 URL 加载盲盒。
 // URL 由调用方显式传入，使本函数与具体远程源解耦，可单独测试。
+// 该目录的结构必须与本地数据目录一致：
+//
+//	<folder>/
+//	  currency.json          (可选的段落级全局货币)
+//	  <blind-box>/
+//	    manifest.json        (必需)
+//	    currency.json        (可选，缺失时回退到段落级全局货币)
 func LoadRemoteBoxes(rawURL string) ([]BlindBox, error) {
 	if rawURL == "" {
 		return nil, nil

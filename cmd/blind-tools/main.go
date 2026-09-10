@@ -1,8 +1,8 @@
 package main
 
 import (
-	"blind-tools/model/blindbox"
 	"blind-tools/res"
+	"blind-tools/store"
 	"blind-tools/view"
 
 	"fyne.io/fyne/v2"
@@ -19,16 +19,9 @@ const (
 	windowHeight = 520
 )
 
-var boxes []blindbox.BlindBox
-
 func main() {
 	setupMetadata()
-	loadLocalData()
 	runMainWindow()
-}
-
-func loadLocalData() {
-	boxes, _ = blindbox.LoadLocalBoxes(blindbox.DataDirectory)
 }
 
 func setupMetadata() {
@@ -51,6 +44,6 @@ func runMainWindow() {
 	window := application.NewWindow(windowTitle)
 
 	window.Resize(fyne.NewSize(windowWidth, windowHeight))
-	window.SetContent(view.MainView(window, boxes))
+	window.SetContent(view.MainView(window, store.New()))
 	window.ShowAndRun()
 }

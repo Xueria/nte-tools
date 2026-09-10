@@ -9,8 +9,6 @@ import (
 )
 
 const (
-	// DataDirectory 数据根目录，包含全局货币文件与各盲盒子目录
-	DataDirectory = "data"
 	// ManifestFile 盲盒数据
 	// 包含盲盒价格
 	ManifestFile = "manifest.json"
@@ -18,7 +16,7 @@ const (
 	CurrencyFile = "currency.json"
 )
 
-// LoadLocalBoxes 读取 directory 下的所有盲盒子目录。
+// LoadLocalBoxes 读取 directory 下的所有盲盒子目录，目录由调用方决定。
 // 没有自带 currency.json 的盲盒回退到根目录的全局货币文件。
 func LoadLocalBoxes(directory string) ([]BlindBox, error) {
 	// 加载全局货币信息

@@ -16,23 +16,29 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// BoxSource 提供视图需要的盲盒数据来源：本地目录与远程仓库。
+// 具体实现由 main 注入，视图不关心数据放在哪里。
+type BoxSource interface {
+	LocalBoxes() ([]blindbox.BlindBox, error)
+	RemoteBoxes() ([]blindbox.BlindBox, error)
+}
+
 // MainView assembles the application UI as a tabbed shell: the blind box
 // planner (list on the left, currency planning on the right) plus two
 // placeholder tabs (竞拍估价 / 拍品清单) whose auction logic was removed.
-func MainView(window fyne.Window, boxes []blindbox.BlindBox) fyne.CanvasObject {
+func MainView(window fyne.Window, source BoxSource) fyne.CanvasObject {
 	// Apply the Material Design 3 theme for the whole app.
 	if a := fyne.CurrentApp(); a != nil {
 		a.Settings().SetTheme(NewMD3Theme())
 	}
 
-	v := &plannerView{
-		localAll: boxes,
-	}
-	v.localFiltered = append([]blindbox.BlindBox(nil), v.localAll...)
+	v := &plannerView{source: source}
 
 	root := v.build()
 
-	// Load the remote section in the background so startup is not blocked.
+	// Load the local section first so the list is populated, then the remote
+	// section in the background so startup is not blocked.
+	v.loadLocal()
 	v.startRemoteLoad()
 
 	tabs := container.NewAppTabs(
@@ -48,6 +54,7 @@ func MainView(window fyne.Window, boxes []blindbox.BlindBox) fyne.CanvasObject {
 
 // plannerView holds the mutable UI state.
 type plannerView struct {
+	source         BoxSource
 	remoteAll      []blindbox.BlindBox
 	localAll       []blindbox.BlindBox
 	remoteFiltered []blindbox.BlindBox
@@ -306,17 +313,22 @@ func (v *plannerView) boxFor(nodeID string) (*blindbox.BlindBox, bool) {
 
 // refresh reloads local and remote data so newly added blind boxes show up.
 func (v *plannerView) refresh() {
-	var status string
+	v.loadLocal()
+	v.startRemoteLoad()
+}
 
-	if local, err := blindbox.LoadLocalBoxes(blindbox.DataDirectory); err != nil {
-		status = fmt.Sprintf("本地加载失败：%v", err)
+// loadLocal reloads the local section and reports the failure, if any.
+// The list is refiltered either way so the tree keeps working.
+func (v *plannerView) loadLocal() {
+	local, err := v.source.LocalBoxes()
+	if err != nil {
+		v.setStatus(fmt.Sprintf("本地加载失败：%v", err))
 	} else {
 		v.localAll = local
+		v.setStatus("")
 	}
 
-	v.setStatus(status)
 	v.applyFilter(v.searchEntry.Text)
-	v.startRemoteLoad()
 }
 
 // startRemoteLoad begins fetching the remote section in the background.
@@ -325,7 +337,7 @@ func (v *plannerView) startRemoteLoad() {
 	v.tree.Refresh()
 
 	go func() {
-		boxes, err := blindbox.LoadRemoteBoxes(blindbox.DefaultRemoteBaseURL)
+		boxes, err := v.source.RemoteBoxes()
 
 		fyne.Do(func() {
 			v.remoteLoading = false
