@@ -112,8 +112,9 @@ func (r *chipRenderer) Refresh() {
 		r.background.StrokeColor = r.background.FillColor
 		r.name.Color = th.Color(theme.ColorNameForegroundOnPrimary, variant)
 	} else {
-		r.background.FillColor = color.Transparent
-		r.background.StrokeColor = th.Color(theme.ColorNameSeparator, variant)
+		// 未选中的标签也要与背景分开：用 surfaceVariant 填充 + outline 描边。
+		r.background.FillColor = th.Color(theme.ColorNameInputBackground, variant)
+		r.background.StrokeColor = th.Color(theme.ColorNameInputBorder, variant)
 		r.name.Color = th.Color(theme.ColorNameForeground, variant)
 	}
 
