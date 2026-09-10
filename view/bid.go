@@ -22,8 +22,8 @@ const (
 	compositionRowMinWidth float32 = 240
 	// compositionTextSize 结果行的字号。
 	compositionTextSize float32 = 12
-	// filterPanelRatio 左侧筛选栏在左右分栏中的初始占比。
-	filterPanelRatio = 0.3
+	// filterPanelRatio 左侧筛选栏在左右分栏中的初始占比，默认对半分。
+	filterPanelRatio = 0.5
 )
 
 // Bid 是「单格推测」页：可用标签筛选可能出现的单格物品，输入单格均价与数量
