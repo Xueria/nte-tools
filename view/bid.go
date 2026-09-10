@@ -29,6 +29,10 @@ const (
 	defaultMaxItemCount = 10
 	// defaultMaxTotal 组合总价上限的默认值：1000 万。
 	defaultMaxTotal = 10_000_000
+	// maxPerTotal 每个总价最多列出多少种组合。
+	maxPerTotal = 3
+	// priorityQuality 优先关注的品质：每个总价先用含它的组合填充。
+	priorityQuality = "red"
 )
 
 // Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价、数量区间与
@@ -328,6 +332,8 @@ func (v *Bid) updateHeader() {
 		parts = append(parts, "没有符合条件的组合")
 	default:
 		parts = append(parts, fmt.Sprintf("共 %d 种可能", len(v.results)))
+		parts = append(parts, fmt.Sprintf("每个总价最多 %d 种、优先含%s",
+			maxPerTotal, qualityLabel(priorityQuality)))
 
 		if v.requiredCount > 0 {
 			parts = append(parts, fmt.Sprintf("已确认 %d 件", v.requiredCount))
@@ -387,10 +393,12 @@ func (v *Bid) infer() {
 
 	if v.OnInfer != nil {
 		v.OnInfer(required, bid.InferQuery{
-			Avg:      avg,
-			MinCount: minCount,
-			MaxCount: maxCount,
-			MaxTotal: maxTotal,
+			Avg:             avg,
+			MinCount:        minCount,
+			MaxCount:        maxCount,
+			MaxTotal:        maxTotal,
+			MaxPerTotal:     maxPerTotal,
+			PriorityQuality: priorityQuality,
 		})
 	}
 }
@@ -507,9 +515,26 @@ func (r *compositionRowRenderer) textWidth() float32 {
 	return r.row.Size().Width - cardInset*2 - scrollBarInset()
 }
 
-// compositionTitle 生成结果行的摘要：总价、件数与均价。总价放在最前面，
-// 列表是按总价从低到高排的，这样一眼就能核对顺序。
+// compositionTitle 生成结果行的摘要：总价、件数与均价。总价放在最前面，列表按
+// 总价从低到高排，这样一眼能核对顺序；含优先品质的组合加星标。
 func compositionTitle(composition bid.Composition) string {
-	return fmt.Sprintf("总价 %s · %d 件 · 均价 %s",
+	title := fmt.Sprintf("总价 %s · %d 件 · 均价 %s",
 		formatValue(composition.Total), composition.Count, formatAverage(composition.Average()))
+
+	if containsQuality(composition, priorityQuality) {
+		return "★ " + title
+	}
+
+	return title
+}
+
+// containsQuality 判断组合里是否含指定品质。
+func containsQuality(composition bid.Composition, quality string) bool {
+	for _, group := range composition.Items {
+		if group.Item.Quality == quality {
+			return true
+		}
+	}
+
+	return false
 }

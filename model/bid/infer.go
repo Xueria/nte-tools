@@ -46,6 +46,11 @@ type InferQuery struct {
 	MaxCount int
 	// MaxTotal 是组合总价的上限，0 表示不限制。
 	MaxTotal int
+	// MaxPerTotal 是每个总价最多保留多少种组合；小于等于 0 表示不限制。
+	MaxPerTotal int
+	// PriorityQuality 是优先关注的品质：每个总价先用含它的组合填充，再用不含的
+	// 补足。为空字符串表示不区分。
+	PriorityQuality string
 }
 
 // CellItems 取出单格（1x1）物品，供推测使用。
@@ -87,26 +92,44 @@ func Infer(items, required []Item, query InferQuery) InferResult {
 		return InferResult{}
 	}
 
+	perTotal := query.MaxPerTotal
+	if perTotal <= 0 {
+		perTotal = maxCompositions
+	}
+
 	state := &searchState{
-		items:     sorted,
-		required:  required,
-		smallest:  sorted[len(sorted)-1].Value,
-		query:     query,
-		baseCount: len(required),
-		baseSum:   requiredTotal,
-		budget:    searchBudget,
+		items:        sorted,
+		required:     required,
+		smallest:     sorted[len(sorted)-1].Value,
+		query:        query,
+		baseCount:    len(required),
+		baseSum:      requiredTotal,
+		budget:       searchBudget,
+		perTotal:     perTotal,
+		priority:     query.PriorityQuality,
+		kept:         make(map[int]int),
+		priorityKept: make(map[int]int),
 	}
 	state.search()
 
 	result := InferResult{Compositions: state.found, Truncated: state.truncated}
 
-	// 按总价从低到高排列，总价相同再按件数（件数窗口重叠时仍保证全局有序）。
+	// 总价从低到高；同一总价里优先品质在前，再按件数。
 	sort.SliceStable(result.Compositions, func(i, j int) bool {
-		if result.Compositions[i].Total != result.Compositions[j].Total {
-			return result.Compositions[i].Total < result.Compositions[j].Total
+		left, right := result.Compositions[i], result.Compositions[j]
+
+		if left.Total != right.Total {
+			return left.Total < right.Total
 		}
 
-		return result.Compositions[i].Count < result.Compositions[j].Count
+		leftPriority := compositionHasQuality(left, query.PriorityQuality)
+		rightPriority := compositionHasQuality(right, query.PriorityQuality)
+
+		if leftPriority != rightPriority {
+			return leftPriority
+		}
+
+		return left.Count < right.Count
 	})
 
 	return result
@@ -123,7 +146,13 @@ type searchState struct {
 	baseCount int
 	baseSum   int
 
-	budget    int
+	budget       int
+	perTotal     int
+	priority     string
+	kept         map[int]int
+	priorityKept map[int]int
+	passLimit    int
+
 	picked    []Item
 	found     []Composition
 	truncated bool
@@ -135,6 +164,8 @@ func (s *searchState) search() {
 	if start < s.baseCount {
 		start = s.baseCount
 	}
+
+	basePriority := hasQuality(s.required, s.priority)
 
 	for count := start; count <= s.query.MaxCount; count++ {
 		target := windowLow(count, s.query.Avg)
@@ -150,7 +181,7 @@ func (s *searchState) search() {
 		}
 
 		for ; target <= high; target++ {
-			s.collect(0, count-s.baseCount, target-s.baseSum, target)
+			s.collectTotal(count, target, basePriority)
 
 			if s.truncated {
 				return
@@ -159,10 +190,31 @@ func (s *searchState) search() {
 	}
 }
 
-// collect 从下标 start 起挑选 remainingCount 件物品，让它们正好凑出
-// remainingSum。物品按价格不增排列，且只能往后选，因此每个组合只被走到一次。
-func (s *searchState) collect(start, remainingCount, remainingSum, target int) {
-	if s.truncated {
+// collectTotal 为某个总价收集组合：先用含优先品质的组合填充，再用不含的补足，
+// 每个总价最多保留 perTotal 种。
+func (s *searchState) collectTotal(count, target int, basePriority bool) {
+	if s.kept[target] >= s.perTotal {
+		return
+	}
+
+	if s.priority != "" && s.priorityKept[target] < s.perTotal {
+		s.passLimit = s.perTotal - s.priorityKept[target]
+		s.collect(0, count-s.baseCount, target-s.baseSum, target, true, basePriority)
+
+		if s.truncated || s.kept[target] >= s.perTotal {
+			return
+		}
+	}
+
+	s.passLimit = s.perTotal - s.kept[target]
+	s.collect(0, count-s.baseCount, target-s.baseSum, target, false, basePriority)
+}
+
+// collect 从下标 start 起挑选 remainingCount 件物品，让它们正好凑出 remainingSum。
+// 物品按价格不增排列，且只能往后选，因此每个组合只被走到一次。wantPriority 为
+// true 时只收含优先品质的组合，false 时只收不含的，两个 pass 互不重叠。
+func (s *searchState) collect(start, remainingCount, remainingSum, target int, wantPriority, hasPriority bool) {
+	if s.truncated || s.passLimit <= 0 {
 		return
 	}
 
@@ -174,8 +226,8 @@ func (s *searchState) collect(start, remainingCount, remainingSum, target int) {
 	s.budget--
 
 	if remainingCount == 0 {
-		if remainingSum == 0 {
-			s.found = append(s.found, buildComposition(s.required, s.picked, target))
+		if remainingSum == 0 && hasPriority == wantPriority {
+			s.record(target, hasPriority)
 		}
 
 		return
@@ -186,25 +238,68 @@ func (s *searchState) collect(start, remainingCount, remainingSum, target int) {
 	}
 
 	for i := start; i < len(s.items); i++ {
-		value := s.items[i].Value
+		item := s.items[i]
 
-		if value > remainingSum {
+		if item.Value > remainingSum {
 			continue
 		}
 
 		// 后面的物品只会更小，剩下的位置凑不到目标了。
-		if value*remainingCount < remainingSum {
+		if item.Value*remainingCount < remainingSum {
 			break
 		}
 
-		s.picked = append(s.picked, s.items[i])
-		s.collect(i, remainingCount-1, remainingSum-value, target)
+		nextPriority := hasPriority || (s.priority != "" && item.Quality == s.priority)
+
+		s.picked = append(s.picked, item)
+		s.collect(i, remainingCount-1, remainingSum-item.Value, target, wantPriority, nextPriority)
 		s.picked = s.picked[:len(s.picked)-1]
 
-		if s.truncated {
+		if s.truncated || s.passLimit <= 0 {
 			return
 		}
 	}
+}
+
+// record 记下一条组合，并更新该总价的计数。
+func (s *searchState) record(target int, hasPriority bool) {
+	s.found = append(s.found, buildComposition(s.required, s.picked, target))
+	s.kept[target]++
+	s.passLimit--
+
+	if hasPriority {
+		s.priorityKept[target]++
+	}
+}
+
+// hasQuality 判断物品里是否含指定品质。
+func hasQuality(items []Item, quality string) bool {
+	if quality == "" {
+		return false
+	}
+
+	for _, item := range items {
+		if item.Quality == quality {
+			return true
+		}
+	}
+
+	return false
+}
+
+// compositionHasQuality 判断组合里是否含指定品质。
+func compositionHasQuality(composition Composition, quality string) bool {
+	if quality == "" {
+		return false
+	}
+
+	for _, group := range composition.Items {
+		if group.Item.Quality == quality {
+			return true
+		}
+	}
+
+	return false
 }
 
 // windowLow、windowHigh 是「均价与 avg 相差小于 1」对应的总价闭区间。
