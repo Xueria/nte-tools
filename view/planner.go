@@ -23,8 +23,8 @@ func NewPlanner() *Planner {
 	return v
 }
 
-// Tab 返回该页的页签标题、图标与内容。
-func (v *Planner) Tab() Tab {
+// NewTab 返回该页的页签标题、图标与内容。
+func (v *Planner) NewTab() Tab {
 	return Tab{Title: "盲盒规划", Icon: theme.HomeIcon(), Content: v.root}
 }
 

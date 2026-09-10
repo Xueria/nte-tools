@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"blind-tools/model/bid"
 	"blind-tools/res"
 	"blind-tools/store"
 	"blind-tools/view"
@@ -49,22 +50,37 @@ func setupMainWindowAndRun() {
 
 	data := store.New()
 	planner := view.NewPlanner()
+	bidPage := view.NewBid()
 	items := view.NewItems()
-	planner.OnRefresh = func() {
+
+	// cells 是单格（1x1）物品，单格推测基于它反推组成，随数据刷新一起更新。
+	var cells []bid.Item
+
+	reload := func() {
 		loadLocalBoxes(data, planner)
 		loadRemoteBoxes(data, planner)
-		loadBidGrids(data, items)
+
+		cells = loadBidGrids(data, items)
+		bidPage.SetCellItemCount(len(cells))
+	}
+	planner.OnRefresh = reload
+
+	bidPage.OnInfer = func(avg, minCount, maxCount int) {
+		if len(cells) == 0 {
+			bidPage.SetStatus("还没有可用的单格物品数据")
+			return
+		}
+
+		bidPage.SetCompositions(bid.Infer(cells, avg, minCount, maxCount))
 	}
 
 	window.SetContent(view.NewShell(
-		planner.Tab(),
-		view.NewAuctionTab(),
-		items.Tab(),
+		planner.NewTab(),
+		bidPage.NewTab(),
+		items.NewTab(),
 	))
 
-	loadLocalBoxes(data, planner)
-	loadRemoteBoxes(data, planner)
-	loadBidGrids(data, items)
+	reload()
 
 	window.ShowAndRun()
 }
@@ -101,14 +117,16 @@ func loadRemoteBoxes(data *store.Store, planner *view.Planner) {
 	}()
 }
 
-// loadBidGrids 读取本地竞拍占格数据并推给拍品清单页。
-func loadBidGrids(data *store.Store, items *view.Items) {
+// loadBidGrids 读取本地竞拍占格数据：推给拍品清单页，并返回其中的单格物品。
+func loadBidGrids(data *store.Store, items *view.Items) []bid.Item {
 	grids, err := data.BidGrids()
 	if err != nil {
 		items.SetStatus(fmt.Sprintf("竞拍数据加载失败：%v", err))
-		return
+		return nil
 	}
 
 	items.SetStatus("")
 	items.SetBidGrids(grids)
+
+	return bid.CellItems(grids)
 }

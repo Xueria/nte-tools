@@ -3,8 +3,6 @@ package view
 import (
 	"fmt"
 	"image/color"
-	"strconv"
-	"strings"
 
 	"blind-tools/model/bid"
 
@@ -58,8 +56,8 @@ func NewItems() *Items {
 	return v
 }
 
-// Tab 返回该页的页签标题、图标与内容。
-func (v *Items) Tab() Tab {
+// NewTab 返回该页的页签标题、图标与内容。
+func (v *Items) NewTab() Tab {
 	return Tab{Title: "拍品清单", Icon: theme.ListIcon(), Content: v.root}
 }
 
@@ -445,55 +443,6 @@ func (r *itemCardRenderer) MinSize() fyne.Size {
 // fitName 按可用宽度截断名称，超出部分用省略号。
 func (r *itemCardRenderer) fitName(width float32) {
 	r.name.Text = fitText(r.card.item.Name, width, cardNameTextSize, fyne.TextStyle{})
-}
-
-// fitText 把文本截断到给定宽度内，超出部分用省略号；宽度未知时原样返回。
-func fitText(text string, maxWidth, textSize float32, style fyne.TextStyle) string {
-	if text == "" || maxWidth <= 0 {
-		return text
-	}
-
-	if fyne.MeasureText(text, textSize, style).Width <= maxWidth {
-		return text
-	}
-
-	runes := []rune(text)
-
-	for len(runes) > 1 {
-		runes = runes[:len(runes)-1]
-
-		if fyne.MeasureText(string(runes)+"…", textSize, style).Width <= maxWidth {
-			return string(runes) + "…"
-		}
-	}
-
-	return "…"
-}
-
-// formatValue 给价格加千分位，便于读七位数。
-func formatValue(value int) string {
-	digits := strconv.Itoa(value)
-
-	if len(digits) <= 3 {
-		return digits
-	}
-
-	lead := len(digits) % 3
-	var text strings.Builder
-
-	if lead > 0 {
-		text.WriteString(digits[:lead])
-	}
-
-	for i := lead; i < len(digits); i += 3 {
-		if text.Len() > 0 {
-			text.WriteByte(',')
-		}
-
-		text.WriteString(digits[i : i+3])
-	}
-
-	return text.String()
 }
 
 // gridTypeLabel 生成类型选择器里的一行：占格尺寸与拍品数。
