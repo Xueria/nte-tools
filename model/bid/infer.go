@@ -33,7 +33,7 @@ func (c Composition) Average() float64 {
 // InferResult 推测结果。
 type InferResult struct {
 	Compositions []Composition
-	// Truncated 为 true 表示组合数或搜索量超过上限，只返回了能算完的那部分。
+	// Truncated 为 true 表示组合数或搜索量超过上限，只返回了总价最低的那部分。
 	Truncated bool
 }
 
@@ -64,6 +64,9 @@ func CellItems(grids []Grid) []Item {
 // query.MaxTotal，且组合的真实均价与 query.Avg 相差小于 1。游戏把均价显示成整数
 // 时，四舍五入、向下取整、向上取整三种算法下的真实均价都落在 (avg-1, avg+1) 内，
 // 所以这个口径不会漏掉真实组成。
+//
+// 枚举顺序是「件数升序 × 总价升序」：先算便宜的，所以一旦触到组合数或搜索量
+// 上限，被截掉的只会是更贵的那部分，不会出现"列出来的全是贵的"。
 func Infer(items, required []Item, query InferQuery) InferResult {
 	if len(items) == 0 || query.MinCount < 1 || query.MaxCount < query.MinCount ||
 		len(required) > query.MaxCount {
@@ -93,11 +96,11 @@ func Infer(items, required []Item, query InferQuery) InferResult {
 		baseSum:   requiredTotal,
 		budget:    searchBudget,
 	}
-	state.walk(0, 0)
+	state.search()
 
 	result := InferResult{Compositions: state.found, Truncated: state.truncated}
 
-	// 按总价从低到高排列，总价相同再按件数。
+	// 按总价从低到高排列，总价相同再按件数（件数窗口重叠时仍保证全局有序）。
 	sort.SliceStable(result.Compositions, func(i, j int) bool {
 		if result.Compositions[i].Total != result.Compositions[j].Total {
 			return result.Compositions[i].Total < result.Compositions[j].Total
@@ -109,7 +112,7 @@ func Infer(items, required []Item, query InferQuery) InferResult {
 	return result
 }
 
-// searchState 保存一次推测的搜索状态。walk 遍历的是「补足部分」，真实件数与
+// searchState 保存一次推测的搜索状态。搜索出来的只是「补足部分」，真实件数与
 // 真实总价要再加上已确认物品的 baseCount 与 baseSum。
 type searchState struct {
 	items    []Item
@@ -126,9 +129,39 @@ type searchState struct {
 	truncated bool
 }
 
-// walk 从下标 start 起继续挑选补足物品。物品按价格不增排列，且每次只能从当前
-// 下标往后选，因此每种组合恰好被走到一次。
-func (s *searchState) walk(start, total int) {
+// search 按件数升序、总价升序逐个目标枚举。
+func (s *searchState) search() {
+	start := s.query.MinCount
+	if start < s.baseCount {
+		start = s.baseCount
+	}
+
+	for count := start; count <= s.query.MaxCount; count++ {
+		target := windowLow(count, s.query.Avg)
+
+		if target < s.baseSum {
+			target = s.baseSum
+		}
+
+		high := windowHigh(count, s.query.Avg)
+
+		if s.query.MaxTotal > 0 && high > s.query.MaxTotal {
+			high = s.query.MaxTotal
+		}
+
+		for ; target <= high; target++ {
+			s.collect(0, count-s.baseCount, target-s.baseSum, target)
+
+			if s.truncated {
+				return
+			}
+		}
+	}
+}
+
+// collect 从下标 start 起挑选 remainingCount 件物品，让它们正好凑出
+// remainingSum。物品按价格不增排列，且只能往后选，因此每个组合只被走到一次。
+func (s *searchState) collect(start, remainingCount, remainingSum, target int) {
 	if s.truncated {
 		return
 	}
@@ -140,66 +173,38 @@ func (s *searchState) walk(start, total int) {
 
 	s.budget--
 
-	count := s.baseCount + len(s.picked)
-	sum := s.baseSum + total
+	if remainingCount == 0 {
+		if remainingSum == 0 {
+			s.found = append(s.found, buildComposition(s.required, s.picked, target))
+		}
 
-	// 价格只增不减，总价一旦超过上限，整条分支都不必再走。
-	if s.query.MaxTotal > 0 && sum > s.query.MaxTotal {
 		return
 	}
 
-	if count >= s.query.MinCount && withinAverage(sum, count, s.query.Avg) {
-		s.found = append(s.found, buildComposition(s.required, s.picked, sum))
-	}
-
-	if count == s.query.MaxCount {
+	if remainingSum < remainingCount*s.smallest {
 		return
 	}
 
 	for i := start; i < len(s.items); i++ {
 		value := s.items[i].Value
 
-		if !s.reachable(total+value, value) {
+		if value > remainingSum {
 			continue
 		}
 
+		// 后面的物品只会更小，剩下的位置凑不到目标了。
+		if value*remainingCount < remainingSum {
+			break
+		}
+
 		s.picked = append(s.picked, s.items[i])
-		s.walk(i, total+value)
+		s.collect(i, remainingCount-1, remainingSum-value, target)
 		s.picked = s.picked[:len(s.picked)-1]
 
 		if s.truncated {
 			return
 		}
 	}
-}
-
-// reachable 判断在补足部分 total 上再加若干件（每件不超过 maxValue、且不小于
-// 最小物品价）之后，是否存在件数不超上限、总价不超上限、均价又落进窗口的组合。
-func (s *searchState) reachable(total, maxValue int) bool {
-	count := s.baseCount + len(s.picked) + 1
-
-	for n := count; n <= s.query.MaxCount; n++ {
-		extra := n - count
-		low := s.baseSum + total + extra*s.smallest
-		high := s.baseSum + total + extra*maxValue
-
-		if s.query.MaxTotal > 0 && high > s.query.MaxTotal {
-			high = s.query.MaxTotal
-		}
-
-		if high < windowLow(n, s.query.Avg) || low > windowHigh(n, s.query.Avg) {
-			continue
-		}
-
-		return true
-	}
-
-	return false
-}
-
-// withinAverage 判断件数为 count、总价为 total 的组合均价是否与 avg 相差小于 1。
-func withinAverage(total, count, avg int) bool {
-	return total >= windowLow(count, avg) && total <= windowHigh(count, avg)
 }
 
 // windowLow、windowHigh 是「均价与 avg 相差小于 1」对应的总价闭区间。

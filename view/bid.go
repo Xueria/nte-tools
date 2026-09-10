@@ -335,7 +335,7 @@ func (v *Bid) updateHeader() {
 	}
 
 	if v.truncated {
-		parts = append(parts, "组合过多，只列出前一部分")
+		parts = append(parts, "组合过多，只列出总价最低的前一部分")
 	}
 
 	v.headerLabel.SetText(strings.Join(parts, " · "))
