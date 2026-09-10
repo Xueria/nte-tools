@@ -56,6 +56,12 @@ func setupMainWindowAndRun() {
 	// cells 是全部单格（1x1）物品，作为推测的候选池，随数据刷新一起更新。
 	var cells []bid.Item
 
+	// required 与 query 记住上一次推测的条件，用于按需展开某个价位的组合。
+	var (
+		required []bid.Item
+		query    bid.InferQuery
+	)
+
 	reload := func() {
 		loadLocalBoxes(data, planner)
 		loadRemoteBoxes(data, planner)
@@ -65,9 +71,14 @@ func setupMainWindowAndRun() {
 	}
 	planner.OnRefresh = reload
 
-	// required 是页面上已勾选（已确认在组合里）的物品，其余由算法从 cells 补足。
-	bidPage.OnInfer = func(required []bid.Item, query bid.InferQuery) {
-		bidPage.SetCompositions(bid.Infer(cells, required, query))
+	// 推测只算出全部价位；具体组合等用户选中某个价位时再枚举。
+	bidPage.OnInfer = func(req []bid.Item, q bid.InferQuery) {
+		required, query = req, q
+		bidPage.SetPrices(bid.InferTotals(req, q))
+	}
+
+	bidPage.OnSelectTotal = func(total int) {
+		bidPage.SetCompositions(bid.InferAt(cells, required, query, total))
 	}
 
 	window.SetContent(view.NewShell(

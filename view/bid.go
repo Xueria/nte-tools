@@ -17,26 +17,26 @@ import (
 )
 
 const (
-	// compositionRowHeight、compositionRowMinWidth 结果行的高度与建议最小宽度。
+	// compositionRowHeight、compositionRowMinWidth 组合行的高度与建议最小宽度。
 	compositionRowHeight   float32 = 42
 	compositionRowMinWidth float32 = 240
-	// compositionTextSize 结果行的字号。
+	// compositionTextSize 列表行（含价位行）的字号。
 	compositionTextSize float32 = 12
 	// filterPanelRatio 左侧筛选栏在左右分栏中的初始占比，默认对半分。
 	filterPanelRatio = 0.5
+	// pricePanelRatio 价位区在右侧上下分栏中的初始占比。
+	pricePanelRatio = 0.45
 	// minItemCount、defaultMaxItemCount 数量区间滑块的起点与默认上限。
 	minItemCount        = 1
 	defaultMaxItemCount = 10
 	// defaultMaxTotal 组合总价上限的默认值：1000 万。
 	defaultMaxTotal = 10_000_000
-	// maxPerTotal 每个总价最多列出多少种组合。
-	maxPerTotal = 3
-	// priorityQuality 优先关注的品质：每个总价先用含它的组合填充。
+	// priorityQuality 关注的品质：含它的组合在结果里标星。
 	priorityQuality = "red"
 )
 
 // Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价、数量区间与
-// 总价上限，由算法从全部单格物品里补足其余位置，列出可能的物品组成。
+// 总价上限；先列出全部可能的总价档位，选中某个价位后再看它的组合。
 type Bid struct {
 	root fyne.CanvasObject
 
@@ -54,23 +54,29 @@ type Bid struct {
 	selected       []bool
 	chips          []*chip
 
-	// 结果
-	statusLabel *widget.Label
-	headerLabel *widget.Label
-	resultList  *widget.List
-	results     []bid.Composition
-	truncated   bool
-	inferred    bool
+	// 价位
+	priceList     *widget.List
+	prices        []bid.TotalOption
+	selectedPrice int
+
+	// 组合
+	compositionLabel *widget.Label
+	resultList       *widget.List
+	results          []bid.Composition
+	truncated        bool
+	inferred         bool
 	// requiredCount 是上一次推测里已确认的物品数量。
 	requiredCount int
 
 	// OnInfer 由装配层赋值：用户点「推测」时触发，页面本身不做推测。
 	OnInfer func(required []bid.Item, query bid.InferQuery)
+	// OnSelectTotal 由装配层赋值：用户选中某个价位时触发，用于取该价位的组合。
+	OnSelectTotal func(total int)
 }
 
 // NewBid 构建单格推测页。
 func NewBid() *Bid {
-	v := &Bid{}
+	v := &Bid{selectedPrice: -1}
 	v.root = v.build()
 	return v
 }
@@ -96,12 +102,33 @@ func (v *Bid) SetCellItems(items []bid.Item) {
 	v.updateHeader()
 }
 
-// SetCompositions 展示一次推测的结果。
+// SetPrices 展示新的价位列表，并默认选中最低的那个价位。
+func (v *Bid) SetPrices(options []bid.TotalOption) {
+	v.prices = options
+	v.selectedPrice = -1
+
+	v.priceList.UnselectAll()
+	v.priceList.Refresh()
+
+	v.results = nil
+	v.compositionLabel.SetText("")
+	v.resultList.Refresh()
+	v.updateHeader()
+
+	if len(options) == 0 {
+		return
+	}
+
+	// 先清空选中态再选中，保证 OnSelected 一定触发。
+	v.priceList.Select(0)
+}
+
+// SetCompositions 展示当前价位下的组合。
 func (v *Bid) SetCompositions(result bid.InferResult) {
 	v.results = result.Compositions
 	v.truncated = result.Truncated
-	v.updateHeader()
 
+	v.compositionLabel.SetText(v.compositionSummary())
 	v.resultList.Refresh()
 	// 用 ScrollToOffset 而非 ScrollToTop：后者在渲染器尚未创建时会解引用空的 scroller。
 	v.resultList.ScrollToOffset(0)
@@ -118,7 +145,7 @@ func (v *Bid) SetStatus(text string) {
 	}
 }
 
-// build 组装左侧筛选栏与右侧输入、结果列表。
+// build 组装左侧筛选栏与右侧输入、价位、组合列表。
 func (v *Bid) build() fyne.CanvasObject {
 	left := v.buildFilter()
 
@@ -148,6 +175,21 @@ func (v *Bid) build() fyne.CanvasObject {
 
 	v.headerLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
+	v.priceList = widget.NewList(
+		func() int { return len(v.prices) },
+		func() fyne.CanvasObject { return newPriceRow() },
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			obj.(*priceRow).set(v.prices[id])
+		},
+	)
+	v.priceList.OnSelected = func(id widget.ListItemID) { v.selectPrice(int(id)) }
+
+	priceHeader := widget.NewLabelWithStyle("价位", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	priceSection := container.NewBorder(priceHeader, nil, nil, nil, v.priceList)
+
+	v.compositionLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	v.compositionLabel.Wrapping = fyne.TextWrapWord
+
 	v.resultList = widget.NewList(
 		func() int { return len(v.results) },
 		func() fyne.CanvasObject { return newCompositionRow() },
@@ -155,6 +197,11 @@ func (v *Bid) build() fyne.CanvasObject {
 			obj.(*compositionRow).set(v.results[id])
 		},
 	)
+
+	compositionSection := container.NewBorder(v.compositionLabel, nil, nil, nil, v.resultList)
+
+	panels := container.NewVSplit(priceSection, compositionSection)
+	panels.Offset = pricePanelRatio
 
 	v.updateHeader()
 
@@ -168,7 +215,7 @@ func (v *Bid) build() fyne.CanvasObject {
 		v.headerLabel,
 		widget.NewSeparator(),
 	)
-	right := container.NewBorder(top, nil, nil, nil, v.resultList)
+	right := container.NewBorder(top, nil, nil, nil, panels)
 
 	// 内侧留空隙，让左右两块面板读起来是独立表面。
 	left = container.New(layout.NewCustomPaddedLayout(0, 0, 0, 8), left)
@@ -232,6 +279,41 @@ func (v *Bid) configureCountSlider() {
 // updateCountLabel 刷新数量区间的说明。
 func (v *Bid) updateCountLabel() {
 	v.countLabel.SetText(fmt.Sprintf("数量 %d ～ %d 件", int(v.countSlider.Lower), int(v.countSlider.Upper)))
+}
+
+// selectPrice 选中某个价位，并向装配层请求它的组合。
+func (v *Bid) selectPrice(id int) {
+	if id < 0 || id >= len(v.prices) {
+		return
+	}
+
+	v.selectedPrice = id
+	v.compositionLabel.SetText("")
+
+	if v.OnSelectTotal != nil {
+		v.OnSelectTotal(v.prices[id].Total)
+	}
+}
+
+// compositionSummary 生成组合区标题：当前价位的组合数。
+func (v *Bid) compositionSummary() string {
+	if v.selectedPrice < 0 || v.selectedPrice >= len(v.prices) {
+		return ""
+	}
+
+	option := v.prices[v.selectedPrice]
+
+	if len(v.results) == 0 {
+		return fmt.Sprintf("总价 %s：没有组合", formatValue(option.Total))
+	}
+
+	title := fmt.Sprintf("总价 %s 的组合：%d 种", formatValue(option.Total), len(v.results))
+
+	if v.truncated {
+		title += "（组合过多，只列出前一部分）"
+	}
+
+	return title
 }
 
 // applyFilter 按关键字过滤标签区；只影响显示，不改动勾选状态。
@@ -321,27 +403,22 @@ func (v *Bid) requiredItems() []bid.Item {
 	return items
 }
 
-// updateHeader 刷新摘要：可用物品数与本次推测的可能数。
+// updateHeader 刷新摘要：可用物品数与本次推测的价位范围。
 func (v *Bid) updateHeader() {
 	parts := []string{fmt.Sprintf("单格（1x1）物品 %d 件", len(v.items))}
 
 	switch {
 	case !v.inferred:
 		parts = append(parts, "填写后点「推测」")
-	case len(v.results) == 0:
-		parts = append(parts, "没有符合条件的组合")
+	case len(v.prices) == 0:
+		parts = append(parts, "没有符合条件的价位")
 	default:
-		parts = append(parts, fmt.Sprintf("共 %d 种可能", len(v.results)))
-		parts = append(parts, fmt.Sprintf("每个总价最多 %d 种、优先含%s",
-			maxPerTotal, qualityLabel(priorityQuality)))
+		parts = append(parts, fmt.Sprintf("%d 个价位（总价 %s ～ %s）", len(v.prices),
+			formatValue(v.prices[0].Total), formatValue(v.prices[len(v.prices)-1].Total)))
 
 		if v.requiredCount > 0 {
 			parts = append(parts, fmt.Sprintf("已确认 %d 件", v.requiredCount))
 		}
-	}
-
-	if v.truncated {
-		parts = append(parts, "组合过多，只列出总价最低的前一部分")
 	}
 
 	v.headerLabel.SetText(strings.Join(parts, " · "))
@@ -389,16 +466,13 @@ func (v *Bid) infer() {
 	v.inferred = true
 	v.requiredCount = len(required)
 	v.SetStatus("")
-	v.updateHeader()
 
 	if v.OnInfer != nil {
 		v.OnInfer(required, bid.InferQuery{
-			Avg:             avg,
-			MinCount:        minCount,
-			MaxCount:        maxCount,
-			MaxTotal:        maxTotal,
-			MaxPerTotal:     maxPerTotal,
-			PriorityQuality: priorityQuality,
+			Avg:      avg,
+			MinCount: minCount,
+			MaxCount: maxCount,
+			MaxTotal: maxTotal,
 		})
 	}
 }
@@ -425,14 +499,14 @@ func parseCount(text string) (int, bool) {
 	return value, true
 }
 
-// compositionRow 结果列表里的一行：件数、总价、均价，以及具体组成。
+// compositionRow 组合列表里的一行：总价、件数、均价，以及具体组成。
 type compositionRow struct {
 	widget.BaseWidget
 
 	composition bid.Composition
 }
 
-// newCompositionRow 构建一行空结果，内容由 set 填充。
+// newCompositionRow 构建一行空组合，内容由 set 填充。
 func newCompositionRow() *compositionRow {
 	row := &compositionRow{}
 	row.ExtendBaseWidget(row)
@@ -440,7 +514,7 @@ func newCompositionRow() *compositionRow {
 	return row
 }
 
-// set 用一条推测结果填充该行。
+// set 用一条组合填充该行。
 func (r *compositionRow) set(composition bid.Composition) {
 	r.composition = composition
 	r.Refresh()
@@ -510,13 +584,12 @@ func (r *compositionRowRenderer) MinSize() fyne.Size {
 	return fyne.NewSize(compositionRowMinWidth, compositionRowHeight)
 }
 
-// textWidth 返回结果行可用于文字的宽度：右侧留出滚动条的位置。
+// textWidth 返回组合行可用于文字的宽度：右侧留出滚动条的位置。
 func (r *compositionRowRenderer) textWidth() float32 {
 	return r.row.Size().Width - cardInset*2 - scrollBarInset()
 }
 
-// compositionTitle 生成结果行的摘要：总价、件数与均价。总价放在最前面，列表按
-// 总价从低到高排，这样一眼能核对顺序；含优先品质的组合加星标。
+// compositionTitle 生成组合行的摘要：总价、件数与均价；含关注品质的组合加星标。
 func compositionTitle(composition bid.Composition) string {
 	title := fmt.Sprintf("总价 %s · %d 件 · 均价 %s",
 		formatValue(composition.Total), composition.Count, formatAverage(composition.Average()))
