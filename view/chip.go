@@ -141,19 +141,17 @@ func (r *chipRenderer) MinSize() fyne.Size {
 	return r.chip.MinSize()
 }
 
-// chipFlow 排列标签：默认横向流式换行，单列模式下每个标签独占一行并铺满宽度。
+// chipFlow 把标签按内容宽度横向排列，一行放不下就换到下一行。
 type chipFlow struct {
 	widget.BaseWidget
 
 	chips []fyne.CanvasObject
 	rows  int
-	// single 为 true 时一行一个标签（用于左侧窄栏）。
-	single bool
 }
 
-// newChipFlow 构建一个空的标签区；single 为 true 时一行一个标签。
-func newChipFlow(single bool) *chipFlow {
-	flow := &chipFlow{rows: 1, single: single}
+// newChipFlow 构建一个空的标签区。
+func newChipFlow() *chipFlow {
+	flow := &chipFlow{rows: 1}
 	flow.ExtendBaseWidget(flow)
 
 	return flow
@@ -201,32 +199,22 @@ func (r *chipFlowRenderer) Layout(size fyne.Size) {
 	chips := r.flow.chips
 	r.SetObjects(chips)
 
+	x, y := float32(0), float32(0)
 	rows := 1
 
-	if r.flow.single {
-		for i, child := range chips {
-			child.Move(fyne.NewPos(0, float32(i)*(chipHeight+chipGap)))
-			child.Resize(fyne.NewSize(size.Width, chipHeight))
+	for _, child := range chips {
+		width := child.MinSize().Width
+
+		if x > 0 && x+chipGap+width > size.Width {
+			x = 0
+			y += chipHeight + chipGap
+			rows++
 		}
 
-		rows = len(chips)
-	} else {
-		x, y := float32(0), float32(0)
+		child.Move(fyne.NewPos(x, y))
+		child.Resize(fyne.NewSize(width, chipHeight))
 
-		for _, child := range chips {
-			width := child.MinSize().Width
-
-			if x > 0 && x+chipGap+width > size.Width {
-				x = 0
-				y += chipHeight + chipGap
-				rows++
-			}
-
-			child.Move(fyne.NewPos(x, y))
-			child.Resize(fyne.NewSize(width, chipHeight))
-
-			x += width + chipGap
-		}
+		x += width + chipGap
 	}
 
 	if rows < 1 {

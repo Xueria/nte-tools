@@ -172,7 +172,7 @@ func (v *Bid) buildFilter() fyne.CanvasObject {
 		widget.NewButton("清空", func() { v.setVisibleChecked(false) }),
 	)
 
-	v.chipFlow = newChipFlow(true)
+	v.chipFlow = newChipFlow()
 	// 滚动条浮在内容之上，把它的宽度留在内容右侧，标签才不会被压住。
 	content := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), v.chipFlow)
 	scroll := container.NewVScroll(content)
