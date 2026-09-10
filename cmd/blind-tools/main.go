@@ -19,7 +19,7 @@ const (
 
 	windowTitle  = "Blind Tools"
 	windowWidth  = 840
-	windowHeight = 520
+	windowHeight = 640
 )
 
 func main() {

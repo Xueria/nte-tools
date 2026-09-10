@@ -22,8 +22,8 @@ const (
 	compositionRowMinWidth float32 = 240
 	// compositionTextSize 列表行（含件数标签）的字号。
 	compositionTextSize float32 = 12
-	// filterPanelRatio 左侧筛选栏在左右分栏中的初始占比，默认对半分。
-	filterPanelRatio = 0.5
+	// filterPanelRatio 左侧筛选栏在左右分栏中的初始占比，左栏只放标签，取窄一些。
+	filterPanelRatio = 0.4
 	// minItemCount、defaultMaxItemCount 数量区间滑块的起点与默认上限。
 	minItemCount        = 1
 	defaultMaxItemCount = 10
