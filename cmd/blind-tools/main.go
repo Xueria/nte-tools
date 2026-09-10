@@ -71,10 +71,10 @@ func setupMainWindowAndRun() {
 	}
 	planner.OnRefresh = reload
 
-	// 推测只算出全部价位；具体组合等用户选中某个价位时再枚举。
+	// 推测先算出「确实有组合」的价位；具体组合等用户选中某个价位时再枚举。
 	bidPage.OnInfer = func(req []bid.Item, q bid.InferQuery) {
 		required, query = req, q
-		bidPage.SetPrices(bid.InferTotals(req, q))
+		bidPage.SetPrices(bid.InferTotals(cells, req, q))
 	}
 
 	bidPage.OnSelectTotal = func(total int) {

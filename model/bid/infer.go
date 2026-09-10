@@ -2,10 +2,10 @@ package bid
 
 import "sort"
 
-// maxCompositions 单次推测最多返回的组合数，避免组合空间过大时撑爆界面。
+// maxCompositions 单次枚举最多返回的组合数，避免组合空间过大时撑爆界面。
 const maxCompositions = 20000
 
-// searchBudget 一次推测允许搜索的节点数上限，兜住极端输入的耗时。
+// searchBudget 一次搜索允许遍历的节点数上限，兜住极端输入的耗时。
 const searchBudget = 2_000_000
 
 // CompositionItem 组成里的一种物品及其件数。
@@ -48,7 +48,7 @@ type InferQuery struct {
 	MaxTotal int
 }
 
-// TotalOption 一个可能的总价档位，以及能凑出它的件数范围。
+// TotalOption 一个确实存在组合的总价档位，以及能凑出它的件数范围。
 type TotalOption struct {
 	Total    int
 	MinCount int
@@ -66,21 +66,120 @@ func CellItems(grids []Grid) []Item {
 	return nil
 }
 
-// InferTotals 推出所有可能的总价档位。它只做算术：件数 n 的总价必然落在
-// 「均价与 Avg 相差小于 1」对应的窗口内，且不低于已确认物品的总价、不超过上限，
-// 因此不需要搜索就能列出全部价位。
-func InferTotals(required []Item, query InferQuery) []TotalOption {
+// InferTotals 推出确实存在组合的总价档位。候选档位用算术就能列出（件数 n 的总价
+// 必然落在均价窗口内、不低于已确认物品总价、不超过上限），再逐个用一次「只找一个
+// 解」的搜索确认：一个解都没有的档位不会返回，免得列出一堆点了没内容的价位。
+func InferTotals(items, required []Item, query InferQuery) []TotalOption {
+	candidates := candidateTotals(required, query)
+
+	if len(candidates) == 0 || len(items) == 0 {
+		return nil
+	}
+
+	sorted := make([]Item, len(items))
+	copy(sorted, items)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Value > sorted[j].Value })
+
+	state := &searchState{
+		items:     sorted,
+		required:  required,
+		smallest:  sorted[len(sorted)-1].Value,
+		query:     query,
+		baseCount: len(required),
+		baseSum:   requiredTotal(required),
+		budget:    searchBudget,
+		limit:     1,
+	}
+
+	options := make([]TotalOption, 0, len(candidates))
+
+	for i, candidate := range candidates {
+		state.target = candidate.Total
+
+		minCount, maxCount := 0, 0
+
+		for count := candidate.MinCount; count <= candidate.MaxCount; count++ {
+			if !state.probe(count) {
+				continue
+			}
+
+			if minCount == 0 {
+				minCount = count
+			}
+
+			maxCount = count
+		}
+
+		if minCount == 0 {
+			// 预算用尽时无法判定，剩下的候选档位按算术结果原样保留。
+			if state.budget <= 0 {
+				options = append(options, candidates[i:]...)
+				break
+			}
+
+			continue
+		}
+
+		options = append(options, TotalOption{Total: candidate.Total, MinCount: minCount, MaxCount: maxCount})
+	}
+
+	return options
+}
+
+// InferAt 枚举指定总价下的所有组合：required 里的物品必须出现，其余位置从
+// items 里补足，件数落在 query 的区间内。枚举按件数升序进行。
+func InferAt(items, required []Item, query InferQuery, total int) InferResult {
+	if len(items) == 0 || query.MinCount < 1 || query.MaxCount < query.MinCount ||
+		len(required) > query.MaxCount {
+		return InferResult{}
+	}
+
+	base := requiredTotal(required)
+
+	if total < base {
+		return InferResult{}
+	}
+
+	if query.MaxTotal > 0 && total > query.MaxTotal {
+		return InferResult{}
+	}
+
+	sorted := make([]Item, len(items))
+	copy(sorted, items)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Value > sorted[j].Value })
+
+	state := &searchState{
+		items:     sorted,
+		required:  required,
+		smallest:  sorted[len(sorted)-1].Value,
+		query:     query,
+		target:    total,
+		baseCount: len(required),
+		baseSum:   base,
+		budget:    searchBudget,
+		limit:     maxCompositions,
+	}
+	state.search()
+
+	result := InferResult{Compositions: state.found, Truncated: state.cut}
+
+	// 同一总价下按件数升序。
+	sort.SliceStable(result.Compositions, func(i, j int) bool {
+		return result.Compositions[i].Count < result.Compositions[j].Count
+	})
+
+	return result
+}
+
+// candidateTotals 用算术列出候选价位，并记录能凑出该价位的件数范围。
+func candidateTotals(required []Item, query InferQuery) []TotalOption {
 	if query.MinCount < 1 || query.MaxCount < query.MinCount {
 		return nil
 	}
 
-	requiredTotal := 0
+	base := requiredTotal(required)
 
-	for _, item := range required {
-		requiredTotal += item.Value
-	}
-
-	if query.MaxTotal > 0 && requiredTotal > query.MaxTotal {
+	if query.MaxTotal > 0 && base > query.MaxTotal {
 		return nil
 	}
 
@@ -94,8 +193,8 @@ func InferTotals(required []Item, query InferQuery) []TotalOption {
 	for count := start; count <= query.MaxCount; count++ {
 		low := windowLow(count, query.Avg)
 
-		if low < requiredTotal {
-			low = requiredTotal
+		if low < base {
+			low = base
 		}
 
 		high := windowHigh(count, query.Avg)
@@ -134,56 +233,19 @@ func InferTotals(required []Item, query InferQuery) []TotalOption {
 	return options
 }
 
-// InferAt 枚举指定总价下的所有组合：required 里的物品必须出现，其余位置从
-// items 里补足，件数落在 query 的区间内。枚举按件数升序进行。
-func InferAt(items, required []Item, query InferQuery, total int) InferResult {
-	if len(items) == 0 || query.MinCount < 1 || query.MaxCount < query.MinCount ||
-		len(required) > query.MaxCount {
-		return InferResult{}
+// requiredTotal 返回已确认物品的总价。
+func requiredTotal(items []Item) int {
+	total := 0
+
+	for _, item := range items {
+		total += item.Value
 	}
 
-	requiredTotal := 0
-
-	for _, item := range required {
-		requiredTotal += item.Value
-	}
-
-	if total < requiredTotal {
-		return InferResult{}
-	}
-
-	if query.MaxTotal > 0 && total > query.MaxTotal {
-		return InferResult{}
-	}
-
-	sorted := make([]Item, len(items))
-	copy(sorted, items)
-	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Value > sorted[j].Value })
-
-	state := &searchState{
-		items:     sorted,
-		required:  required,
-		smallest:  sorted[len(sorted)-1].Value,
-		query:     query,
-		target:    total,
-		baseCount: len(required),
-		baseSum:   requiredTotal,
-		budget:    searchBudget,
-	}
-	state.search()
-
-	result := InferResult{Compositions: state.found, Truncated: state.truncated}
-
-	// 同一总价下按件数升序。
-	sort.SliceStable(result.Compositions, func(i, j int) bool {
-		return result.Compositions[i].Count < result.Compositions[j].Count
-	})
-
-	return result
+	return total
 }
 
-// searchState 保存一次推测的搜索状态。搜索出来的只是「补足部分」，真实件数与
-// 真实总价要再加上已确认物品的 baseCount 与 baseSum。
+// searchState 保存一次搜索的状态。搜索出来的只是「补足部分」，真实件数与真实
+// 总价要再加上已确认物品的 baseCount 与 baseSum。
 type searchState struct {
 	items    []Item
 	required []Item
@@ -194,10 +256,13 @@ type searchState struct {
 	baseCount int
 	baseSum   int
 
-	budget    int
-	picked    []Item
-	found     []Composition
-	truncated bool
+	budget int
+	// limit 是本次运行最多收集多少条；cut 表示因为达到 limit 或预算耗尽提前停止。
+	limit int
+	cut   bool
+
+	picked []Item
+	found  []Composition
 }
 
 // search 逐件数枚举目标总价下的组合。
@@ -208,27 +273,49 @@ func (s *searchState) search() {
 	}
 
 	for count := start; count <= s.query.MaxCount; count++ {
-		if s.target < windowLow(count, s.query.Avg) || s.target > windowHigh(count, s.query.Avg) {
-			continue
-		}
+		s.searchCount(count)
 
-		s.collect(0, count-s.baseCount, s.target-s.baseSum)
-
-		if s.truncated {
+		if s.cut {
 			return
 		}
 	}
 }
 
-// collect 从下标 start 起挑选 remainingCount 件物品，让它们正好凑出 remainingSum。
-// 物品按价格不增排列，且只能往后选，因此每个组合只被走到一次。
-func (s *searchState) collect(start, remainingCount, remainingSum int) {
-	if s.truncated {
+// searchCount 枚举件数恰好为 count 的目标组合。
+func (s *searchState) searchCount(count int) {
+	if s.cut || count < s.baseCount || s.target < s.baseSum {
 		return
 	}
 
-	if s.budget <= 0 || len(s.found) >= maxCompositions {
-		s.truncated = true
+	if s.target < windowLow(count, s.query.Avg) || s.target > windowHigh(count, s.query.Avg) {
+		return
+	}
+
+	s.collect(0, count-s.baseCount, s.target-s.baseSum)
+}
+
+// probe 判断「件数为 count、总价为 target」是否至少存在一个组合。
+func (s *searchState) probe(count int) bool {
+	if s.budget <= 0 {
+		return false
+	}
+
+	s.found = s.found[:0]
+	s.cut = false
+	s.searchCount(count)
+
+	return len(s.found) > 0
+}
+
+// collect 从下标 start 起挑选 remainingCount 件物品，让它们正好凑出 remainingSum。
+// 物品按价格不增排列，且只能往后选，因此每个组合只被走到一次。
+func (s *searchState) collect(start, remainingCount, remainingSum int) {
+	if s.cut {
+		return
+	}
+
+	if len(s.found) >= s.limit || s.budget <= 0 {
+		s.cut = true
 		return
 	}
 
@@ -262,7 +349,7 @@ func (s *searchState) collect(start, remainingCount, remainingSum int) {
 		s.collect(i, remainingCount-1, remainingSum-item.Value)
 		s.picked = s.picked[:len(s.picked)-1]
 
-		if s.truncated {
+		if s.cut {
 			return
 		}
 	}

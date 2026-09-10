@@ -20,12 +20,10 @@ const (
 	// compositionRowHeight、compositionRowMinWidth 组合行的高度与建议最小宽度。
 	compositionRowHeight   float32 = 42
 	compositionRowMinWidth float32 = 240
-	// compositionTextSize 列表行（含价位行）的字号。
+	// compositionTextSize 列表行（含价位标签）的字号。
 	compositionTextSize float32 = 12
 	// filterPanelRatio 左侧筛选栏在左右分栏中的初始占比，默认对半分。
 	filterPanelRatio = 0.5
-	// pricePanelRatio 价位区在右侧上下分栏中的初始占比。
-	pricePanelRatio = 0.45
 	// minItemCount、defaultMaxItemCount 数量区间滑块的起点与默认上限。
 	minItemCount        = 1
 	defaultMaxItemCount = 10
@@ -36,7 +34,7 @@ const (
 )
 
 // Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价、数量区间与
-// 总价上限；先列出全部可能的总价档位，选中某个价位后再看它的组合。
+// 总价上限；先用一条横向标签列出有组合的价位，选中某个价位后再看它的组合。
 type Bid struct {
 	root fyne.CanvasObject
 
@@ -55,7 +53,8 @@ type Bid struct {
 	chips          []*chip
 
 	// 价位
-	priceList     *widget.List
+	priceBar      *fyne.Container
+	priceTabs     []*priceTab
 	prices        []bid.TotalOption
 	selectedPrice int
 
@@ -106,13 +105,23 @@ func (v *Bid) SetCellItems(items []bid.Item) {
 	v.updateHeader()
 }
 
-// SetPrices 展示新的价位列表，并默认选中最低的那个价位。
+// SetPrices 展示新的价位标签，并默认选中最低的那个价位。
 func (v *Bid) SetPrices(options []bid.TotalOption) {
 	v.prices = options
 	v.selectedPrice = -1
 
-	v.priceList.UnselectAll()
-	v.priceList.Refresh()
+	v.priceTabs = make([]*priceTab, 0, len(options))
+	tabs := make([]fyne.CanvasObject, 0, len(options))
+
+	for i, option := range options {
+		tab := newPriceTab(v)
+		tab.set(i, option, false)
+		v.priceTabs = append(v.priceTabs, tab)
+		tabs = append(tabs, tab)
+	}
+
+	v.priceBar.Objects = tabs
+	v.priceBar.Refresh()
 
 	v.results = nil
 	v.compositionLabel.SetText("")
@@ -123,8 +132,7 @@ func (v *Bid) SetPrices(options []bid.TotalOption) {
 		return
 	}
 
-	// 先清空选中态再选中，保证 OnSelected 一定触发。
-	v.priceList.Select(0)
+	v.selectPrice(0)
 }
 
 // SetCompositions 展示当前价位下的组合。
@@ -149,7 +157,7 @@ func (v *Bid) SetStatus(text string) {
 	}
 }
 
-// build 组装左侧筛选栏与右侧输入、价位、组合列表。
+// build 组装左侧筛选栏与右侧输入、价位标签、组合列表。
 func (v *Bid) build() fyne.CanvasObject {
 	left := v.buildFilter()
 
@@ -179,17 +187,13 @@ func (v *Bid) build() fyne.CanvasObject {
 
 	v.headerLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
-	v.priceList = widget.NewList(
-		func() int { return len(v.prices) },
-		func() fyne.CanvasObject { return newPriceRow() },
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			obj.(*priceRow).set(v.prices[id])
-		},
-	)
-	v.priceList.OnSelected = func(id widget.ListItemID) { v.selectPrice(int(id)) }
+	// 价位用一条横向可滚动的标签条展示，省下竖向空间给组合列表。
+	v.priceBar = container.NewHBox()
+	barContent := container.New(layout.NewCustomPaddedLayout(0, scrollBarInset(), 0, 0), v.priceBar)
+	barScroll := container.NewHScroll(barContent)
 
-	priceHeader := widget.NewLabelWithStyle("价位", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	priceSection := container.NewBorder(priceHeader, nil, nil, nil, v.priceList)
+	priceTitle := widget.NewLabelWithStyle("价位", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	priceSection := container.NewBorder(nil, nil, priceTitle, nil, barScroll)
 
 	v.compositionLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	v.compositionLabel.Wrapping = fyne.TextWrapWord
@@ -202,10 +206,11 @@ func (v *Bid) build() fyne.CanvasObject {
 		},
 	)
 
-	compositionSection := container.NewBorder(v.compositionLabel, nil, nil, nil, v.resultList)
-
-	panels := container.NewVSplit(priceSection, compositionSection)
-	panels.Offset = pricePanelRatio
+	lists := container.NewBorder(
+		container.NewVBox(priceSection, widget.NewSeparator(), v.compositionLabel),
+		nil, nil, nil,
+		v.resultList,
+	)
 
 	v.updateHeader()
 
@@ -219,7 +224,7 @@ func (v *Bid) build() fyne.CanvasObject {
 		v.headerLabel,
 		widget.NewSeparator(),
 	)
-	right := container.NewBorder(top, nil, nil, nil, panels)
+	right := container.NewBorder(top, nil, nil, nil, lists)
 
 	// 内侧留空隙，让左右两块面板读起来是独立表面。
 	left = container.New(layout.NewCustomPaddedLayout(0, 0, 0, 8), left)
@@ -286,16 +291,21 @@ func (v *Bid) updateCountLabel() {
 }
 
 // selectPrice 选中某个价位，并向装配层请求它的组合。
-func (v *Bid) selectPrice(id int) {
-	if id < 0 || id >= len(v.prices) {
+func (v *Bid) selectPrice(index int) {
+	if index < 0 || index >= len(v.prices) {
 		return
 	}
 
-	v.selectedPrice = id
+	v.selectedPrice = index
+
+	for i, tab := range v.priceTabs {
+		tab.setSelected(i == index)
+	}
+
 	v.compositionLabel.SetText("")
 
 	if v.OnSelectTotal != nil {
-		v.OnSelectTotal(v.prices[id].Total)
+		v.OnSelectTotal(v.prices[index].Total)
 	}
 }
 
@@ -305,19 +315,17 @@ func (v *Bid) compositionSummary() string {
 		return ""
 	}
 
-	option := v.prices[v.selectedPrice]
+	return fmt.Sprintf("%s 的组合：%d 种%s",
+		priceOptionLabel(v.prices[v.selectedPrice]), len(v.results), v.truncatedNote())
+}
 
-	if len(v.results) == 0 {
-		return fmt.Sprintf("总价 %s：没有组合", formatValue(option.Total))
+// truncatedNote 返回组合被截断时的说明。
+func (v *Bid) truncatedNote() string {
+	if !v.truncated {
+		return ""
 	}
 
-	title := fmt.Sprintf("总价 %s 的组合：%d 种", formatValue(option.Total), len(v.results))
-
-	if v.truncated {
-		title += "（组合过多，只列出前一部分）"
-	}
-
-	return title
+	return "（组合过多，只列出前一部分）"
 }
 
 // applyFilter 按关键字过滤标签区；只影响显示，不改动勾选状态。
