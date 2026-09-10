@@ -1,9 +1,7 @@
 package view
 
 import (
-	"blind-tools/model"
-	"blind-tools/model/loader"
-	"blind-tools/model/plan"
+	"blind-tools/model/blindbox"
 	"errors"
 	"fmt"
 	"image/color"
@@ -21,7 +19,7 @@ import (
 // MainView assembles the application UI as a tabbed shell: the blind box
 // planner (list on the left, currency planning on the right) plus two
 // placeholder tabs (竞拍估价 / 拍品清单) whose auction logic was removed.
-func MainView(window fyne.Window, boxes []model.BlindBox) fyne.CanvasObject {
+func MainView(window fyne.Window, boxes []blindbox.BlindBox) fyne.CanvasObject {
 	// Apply the Material Design 3 theme for the whole app.
 	if a := fyne.CurrentApp(); a != nil {
 		a.Settings().SetTheme(NewMD3Theme())
@@ -30,7 +28,7 @@ func MainView(window fyne.Window, boxes []model.BlindBox) fyne.CanvasObject {
 	v := &plannerView{
 		localAll: boxes,
 	}
-	v.localFiltered = append([]model.BlindBox(nil), v.localAll...)
+	v.localFiltered = append([]blindbox.BlindBox(nil), v.localAll...)
 
 	root := v.build()
 
@@ -50,11 +48,11 @@ func MainView(window fyne.Window, boxes []model.BlindBox) fyne.CanvasObject {
 
 // plannerView holds the mutable UI state.
 type plannerView struct {
-	remoteAll      []model.BlindBox
-	localAll       []model.BlindBox
-	remoteFiltered []model.BlindBox
-	localFiltered  []model.BlindBox
-	selected       *model.BlindBox
+	remoteAll      []blindbox.BlindBox
+	localAll       []blindbox.BlindBox
+	remoteFiltered []blindbox.BlindBox
+	localFiltered  []blindbox.BlindBox
+	selected       *blindbox.BlindBox
 	selectedNodeID string
 	remoteLoading  bool
 
@@ -73,7 +71,7 @@ type plannerView struct {
 	resultBox    *fyne.Container
 	summaryLabel *widget.Label
 
-	plan             []plan.PlanStep
+	plan             []blindbox.PlanStep
 	insufficient     bool
 	insufficientDraw int
 }
@@ -226,7 +224,7 @@ func (v *plannerView) applyFilter(text string) {
 	v.localFiltered = filterBoxes(v.localAll, query)
 
 	// Re-resolve the current selection against the filtered lists.
-	keep := (*model.BlindBox)(nil)
+	keep := (*blindbox.BlindBox)(nil)
 	keepID := ""
 	if v.selected != nil {
 		if c, ok := v.boxFor(v.selectedNodeID); ok {
@@ -252,12 +250,12 @@ func (v *plannerView) applyFilter(text string) {
 }
 
 // filterBoxes returns the boxes matching the query by name or id.
-func filterBoxes(boxes []model.BlindBox, query string) []model.BlindBox {
+func filterBoxes(boxes []blindbox.BlindBox, query string) []blindbox.BlindBox {
 	if query == "" {
-		return append([]model.BlindBox(nil), boxes...)
+		return append([]blindbox.BlindBox(nil), boxes...)
 	}
 
-	filtered := make([]model.BlindBox, 0, len(boxes))
+	filtered := make([]blindbox.BlindBox, 0, len(boxes))
 	for _, box := range boxes {
 		if strings.Contains(strings.ToLower(box.Manifest.Name), query) ||
 			strings.Contains(strings.ToLower(box.Manifest.ID), query) {
@@ -282,13 +280,13 @@ func (v *plannerView) sectionLeafIDs(section string) []widget.TreeNodeID {
 }
 
 // boxFor resolves a tree leaf node id to its blind box.
-func (v *plannerView) boxFor(nodeID string) (*model.BlindBox, bool) {
+func (v *plannerView) boxFor(nodeID string) (*blindbox.BlindBox, bool) {
 	section, id, ok := strings.Cut(nodeID, ":")
 	if !ok {
 		return nil, false
 	}
 
-	var list []model.BlindBox
+	var list []blindbox.BlindBox
 	switch section {
 	case "remote":
 		list = v.remoteFiltered
@@ -310,7 +308,7 @@ func (v *plannerView) boxFor(nodeID string) (*model.BlindBox, bool) {
 func (v *plannerView) refresh() {
 	var status string
 
-	if local, err := loader.LoadLocalBoxes(loader.DataDirectory); err != nil {
+	if local, err := blindbox.LoadLocalBoxes(blindbox.DataDirectory); err != nil {
 		status = fmt.Sprintf("本地加载失败：%v", err)
 	} else {
 		v.localAll = local
@@ -327,7 +325,7 @@ func (v *plannerView) startRemoteLoad() {
 	v.tree.Refresh()
 
 	go func() {
-		boxes, err := loader.LoadRemoteBoxes(loader.DefaultRemoteBaseURL)
+		boxes, err := blindbox.LoadRemoteBoxes(blindbox.DefaultRemoteBaseURL)
 
 		fyne.Do(func() {
 			v.remoteLoading = false
@@ -462,7 +460,7 @@ func (v *plannerView) calculate() {
 		end = start
 	}
 
-	result := plan.CalculatePlan(*v.selected, start, end, balances, v.preferredCurrencyID())
+	result := blindbox.CalculatePlan(*v.selected, start, end, balances, v.preferredCurrencyID())
 
 	v.plan = result.Steps
 	v.insufficient = result.Insufficient
@@ -485,10 +483,10 @@ func (v *plannerView) preferredCurrencyID() string {
 }
 
 // updateSummary renders final balances and any insufficiency notice.
-func (v *plannerView) updateSummary(result plan.PlanResult) {
+func (v *plannerView) updateSummary(result blindbox.PlanResult) {
 	parts := make([]string, 0, len(result.Final))
-	for _, id := range plan.SortedCurrencyIDs(*v.selected) {
-		parts = append(parts, fmt.Sprintf("%s %d", plan.CurrencyName(*v.selected, id), result.Final[id]))
+	for _, id := range blindbox.SortedCurrencyIDs(*v.selected) {
+		parts = append(parts, fmt.Sprintf("%s %d", blindbox.CurrencyName(*v.selected, id), result.Final[id]))
 	}
 	summary := "剩余货币：" + strings.Join(parts, "，")
 	if result.Insufficient {
@@ -566,7 +564,7 @@ func newBlindBoxItem() fyne.CanvasObject {
 	return item
 }
 
-func (b *blindBoxItem) set(box model.BlindBox) {
+func (b *blindBoxItem) set(box blindbox.BlindBox) {
 	b.title = box.Manifest.Name
 	b.subtitle = fmt.Sprintf("%d 抽 · %d 种货币", box.Manifest.Draws, len(box.Currencies))
 	b.Refresh()

@@ -1,8 +1,6 @@
-package plan
+package blindbox
 
 import (
-	"blind-tools/model"
-
 	"maps"
 	"math"
 	"sort"
@@ -35,7 +33,7 @@ type PlanResult struct {
 // Because the number of draws is small, it enumerates every currency assignment
 // (each draw independently chooses one of its accepted currencies) and keeps
 // the best one, which is guaranteed to be optimal.
-func CalculatePlan(box model.BlindBox, start, end int, balances map[string]int, preferredID string) PlanResult {
+func CalculatePlan(box BlindBox, start, end int, balances map[string]int, preferredID string) PlanResult {
 	costs := buildCostLookup(box)
 	order := currencyOrder(box)
 
@@ -179,7 +177,7 @@ func imbalanceOf(balances, spent map[string]int) float64 {
 }
 
 // buildCostLookup maps a draw number (1 based) to its cost table.
-func buildCostLookup(box model.BlindBox) map[int]map[string]int {
+func buildCostLookup(box BlindBox) map[int]map[string]int {
 	costs := make(map[int]map[string]int, len(box.Manifest.Prices))
 	for _, price := range box.Manifest.Prices {
 		table := make(map[string]int, len(price.Cost))
@@ -192,7 +190,7 @@ func buildCostLookup(box model.BlindBox) map[int]map[string]int {
 // currencyOrder returns every currency id in a deterministic order: the
 // declared box currencies first, then any cost-table keys that are not
 // declared currencies.
-func currencyOrder(box model.BlindBox) []string {
+func currencyOrder(box BlindBox) []string {
 	seen := make(map[string]bool, len(box.Currencies)+1)
 	order := make([]string, 0, len(box.Currencies)+1)
 
@@ -224,7 +222,7 @@ func drawCurrencies(draw int, costs map[int]map[string]int, order []string) []st
 }
 
 // CurrencyName resolves a currency ID to its display name.
-func CurrencyName(box model.BlindBox, id string) string {
+func CurrencyName(box BlindBox, id string) string {
 	for _, currency := range box.Currencies {
 		if currency.ID == id {
 			return currency.Name
@@ -235,7 +233,7 @@ func CurrencyName(box model.BlindBox, id string) string {
 
 // SortedCurrencyIDs returns the box currency IDs in a stable order, used to
 // present final balances consistently.
-func SortedCurrencyIDs(box model.BlindBox) []string {
+func SortedCurrencyIDs(box BlindBox) []string {
 	ids := make([]string, 0, len(box.Currencies))
 	for _, currency := range box.Currencies {
 		ids = append(ids, currency.ID)

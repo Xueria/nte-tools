@@ -1,4 +1,4 @@
-package model
+package blindbox
 
 import (
 	"fmt"

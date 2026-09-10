@@ -1,8 +1,6 @@
-package loader
+package blindbox
 
 import (
-	"blind-tools/model"
-
 	"encoding/json"
 	"fmt"
 	"log"
@@ -22,7 +20,7 @@ const (
 
 // LoadLocalBoxes 读取 directory 下的所有盲盒子目录。
 // 没有自带 currency.json 的盲盒回退到根目录的全局货币文件。
-func LoadLocalBoxes(directory string) ([]model.BlindBox, error) {
+func LoadLocalBoxes(directory string) ([]BlindBox, error) {
 	// 加载全局货币信息
 	globalCurrency, err := LoadCurrency(filepath.Join(directory, CurrencyFile))
 
@@ -37,7 +35,7 @@ func LoadLocalBoxes(directory string) ([]model.BlindBox, error) {
 		return nil, fmt.Errorf("error read directory %s: %w", directory, err)
 	}
 
-	var boxes []model.BlindBox
+	var boxes []BlindBox
 
 	for _, file := range files {
 		if !file.IsDir() {
@@ -58,7 +56,7 @@ func LoadLocalBoxes(directory string) ([]model.BlindBox, error) {
 			continue
 		}
 
-		var manifest model.Manifest
+		var manifest Manifest
 
 		if err := json.Unmarshal(content, &manifest); err != nil {
 			log.Printf("skip blind box %s: unmarshal manifest failed: %v", boxDirectory, err)
@@ -77,7 +75,7 @@ func LoadLocalBoxes(directory string) ([]model.BlindBox, error) {
 			continue
 		}
 
-		box := model.BlindBox{Manifest: manifest}
+		box := BlindBox{Manifest: manifest}
 
 		if localCurrency != nil {
 			box.Currencies = localCurrency
@@ -85,12 +83,12 @@ func LoadLocalBoxes(directory string) ([]model.BlindBox, error) {
 			box.Currencies = globalCurrency
 		}
 
-		if err := model.ValidateManifestPrices(box); err != nil {
+		if err := ValidateManifestPrices(box); err != nil {
 			log.Printf("skip blind box: %v", err)
 			continue
 		}
 
-		if err := model.ValidateManifestDraws(box); err != nil {
+		if err := ValidateManifestDraws(box); err != nil {
 			log.Printf("skip blind box: %v", err)
 			continue
 		}
@@ -103,7 +101,7 @@ func LoadLocalBoxes(directory string) ([]model.BlindBox, error) {
 
 // LoadCurrency 读取一个 currency.json 文件。
 // 文件不存在时返回 (nil, nil)，便于调用方回退到其它货币来源。
-func LoadCurrency(file string) ([]model.Currency, error) {
+func LoadCurrency(file string) ([]Currency, error) {
 	text, err := os.ReadFile(file)
 
 	if err != nil {
@@ -113,7 +111,7 @@ func LoadCurrency(file string) ([]model.Currency, error) {
 		return nil, fmt.Errorf("error read currency file %s : %w", file, err)
 	}
 
-	var currencies []model.Currency
+	var currencies []Currency
 
 	if err := json.Unmarshal(text, &currencies); err != nil {
 		return nil, fmt.Errorf("error unmarshal currency file %s : %w", file, err)

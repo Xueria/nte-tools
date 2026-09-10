@@ -1,4 +1,4 @@
-package model
+package blindbox
 
 // PriceEntry 单次抽数的价格：每个货币需要花费多少。
 type PriceEntry struct {

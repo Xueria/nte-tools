@@ -1,8 +1,7 @@
 package main
 
 import (
-	"blind-tools/model"
-	"blind-tools/model/loader"
+	"blind-tools/model/blindbox"
 	"blind-tools/res"
 	"blind-tools/view"
 
@@ -20,7 +19,7 @@ const (
 	windowHeight = 520
 )
 
-var boxes []model.BlindBox
+var boxes []blindbox.BlindBox
 
 func main() {
 	setupMetadata()
@@ -29,7 +28,7 @@ func main() {
 }
 
 func loadLocalData() {
-	boxes, _ = loader.LoadLocalBoxes(loader.DataDirectory)
+	boxes, _ = blindbox.LoadLocalBoxes(blindbox.DataDirectory)
 }
 
 func setupMetadata() {
