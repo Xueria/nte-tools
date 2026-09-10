@@ -68,6 +68,10 @@ type Bid struct {
 	// requiredCount 是上一次推测里已确认的物品数量。
 	requiredCount int
 
+	// 提示与摘要
+	statusLabel *widget.Label
+	headerLabel *widget.Label
+
 	// OnInfer 由装配层赋值：用户点「推测」时触发，页面本身不做推测。
 	OnInfer func(required []bid.Item, query bid.InferQuery)
 	// OnSelectTotal 由装配层赋值：用户选中某个价位时触发，用于取该价位的组合。
