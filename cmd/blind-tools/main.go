@@ -71,14 +71,14 @@ func setupMainWindowAndRun() {
 	}
 	planner.OnRefresh = reload
 
-	// 推测先算出「确实有组合」的价位；具体组合等用户选中某个价位时再枚举。
+	// 推测先算出「确实有组合」的件数档位；具体组合等用户选中某个件数时再枚举。
 	bidPage.OnInfer = func(req []bid.Item, q bid.InferQuery) {
 		required, query = req, q
-		bidPage.SetPrices(bid.InferTotals(cells, req, q))
+		bidPage.SetCounts(bid.InferCounts(cells, req, q))
 	}
 
-	bidPage.OnSelectTotal = func(total int) {
-		bidPage.SetCompositions(bid.InferAt(cells, required, query, total))
+	bidPage.OnSelectCount = func(count int) {
+		bidPage.SetCompositions(bid.InferCount(cells, required, query, count))
 	}
 
 	window.SetContent(view.NewShell(

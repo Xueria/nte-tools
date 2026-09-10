@@ -20,7 +20,7 @@ const (
 	// compositionRowHeight、compositionRowMinWidth 组合行的高度与建议最小宽度。
 	compositionRowHeight   float32 = 42
 	compositionRowMinWidth float32 = 240
-	// compositionTextSize 列表行（含价位标签）的字号。
+	// compositionTextSize 列表行（含件数标签）的字号。
 	compositionTextSize float32 = 12
 	// filterPanelRatio 左侧筛选栏在左右分栏中的初始占比，默认对半分。
 	filterPanelRatio = 0.5
@@ -34,7 +34,7 @@ const (
 )
 
 // Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价、数量区间与
-// 总价上限；先用一条横向标签列出有组合的价位，选中某个价位后再看它的组合。
+// 总价上限；先用一条横向标签列出有组合的件数，选中某个件数后再看它的组合。
 type Bid struct {
 	root fyne.CanvasObject
 
@@ -52,11 +52,11 @@ type Bid struct {
 	selected       []bool
 	chips          []*chip
 
-	// 价位
-	priceBar      *fyne.Container
-	priceTabs     []*priceTab
-	prices        []bid.TotalOption
-	selectedPrice int
+	// 件数档位
+	countBar    *fyne.Container
+	countTabs   []*countTab
+	counts      []int
+	selectedTab int
 
 	// 组合
 	compositionLabel *widget.Label
@@ -73,13 +73,13 @@ type Bid struct {
 
 	// OnInfer 由装配层赋值：用户点「推测」时触发，页面本身不做推测。
 	OnInfer func(required []bid.Item, query bid.InferQuery)
-	// OnSelectTotal 由装配层赋值：用户选中某个价位时触发，用于取该价位的组合。
-	OnSelectTotal func(total int)
+	// OnSelectCount 由装配层赋值：用户选中某个件数时触发，用于取该件数的组合。
+	OnSelectCount func(count int)
 }
 
 // NewBid 构建单格推测页。
 func NewBid() *Bid {
-	v := &Bid{selectedPrice: -1}
+	v := &Bid{selectedTab: -1}
 	v.root = v.build()
 	return v
 }
@@ -105,37 +105,37 @@ func (v *Bid) SetCellItems(items []bid.Item) {
 	v.updateHeader()
 }
 
-// SetPrices 展示新的价位标签，并默认选中最低的那个价位。
-func (v *Bid) SetPrices(options []bid.TotalOption) {
-	v.prices = options
-	v.selectedPrice = -1
+// SetCounts 展示新的件数档位，并默认选中最小的那个。
+func (v *Bid) SetCounts(counts []int) {
+	v.counts = counts
+	v.selectedTab = -1
 
-	v.priceTabs = make([]*priceTab, 0, len(options))
-	tabs := make([]fyne.CanvasObject, 0, len(options))
+	v.countTabs = make([]*countTab, 0, len(counts))
+	tabs := make([]fyne.CanvasObject, 0, len(counts))
 
-	for i, option := range options {
-		tab := newPriceTab(v)
-		tab.set(i, option, false)
-		v.priceTabs = append(v.priceTabs, tab)
+	for i, count := range counts {
+		tab := newCountTab(v)
+		tab.set(i, count, false)
+		v.countTabs = append(v.countTabs, tab)
 		tabs = append(tabs, tab)
 	}
 
-	v.priceBar.Objects = tabs
-	v.priceBar.Refresh()
+	v.countBar.Objects = tabs
+	v.countBar.Refresh()
 
 	v.results = nil
 	v.compositionLabel.SetText("")
 	v.resultList.Refresh()
 	v.updateHeader()
 
-	if len(options) == 0 {
+	if len(counts) == 0 {
 		return
 	}
 
-	v.selectPrice(0)
+	v.selectCount(0)
 }
 
-// SetCompositions 展示当前价位下的组合。
+// SetCompositions 展示当前件数下的组合。
 func (v *Bid) SetCompositions(result bid.InferResult) {
 	v.results = result.Compositions
 	v.truncated = result.Truncated
@@ -157,7 +157,7 @@ func (v *Bid) SetStatus(text string) {
 	}
 }
 
-// build 组装左侧筛选栏与右侧输入、价位标签、组合列表。
+// build 组装左侧筛选栏与右侧输入、件数标签、组合列表。
 func (v *Bid) build() fyne.CanvasObject {
 	left := v.buildFilter()
 
@@ -187,13 +187,13 @@ func (v *Bid) build() fyne.CanvasObject {
 
 	v.headerLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
-	// 价位用一条横向可滚动的标签条展示，省下竖向空间给组合列表。
-	v.priceBar = container.NewHBox()
-	barContent := container.New(layout.NewCustomPaddedLayout(0, scrollBarInset(), 0, 0), v.priceBar)
+	// 件数用一条横向可滚动的标签条展示，省下竖向空间给组合列表。
+	v.countBar = container.NewHBox()
+	barContent := container.New(layout.NewCustomPaddedLayout(0, scrollBarInset(), 0, 0), v.countBar)
 	barScroll := container.NewHScroll(barContent)
 
-	priceTitle := widget.NewLabelWithStyle("价位", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	priceSection := container.NewBorder(nil, nil, priceTitle, nil, barScroll)
+	tabTitle := widget.NewLabelWithStyle("件数", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	tabSection := container.NewBorder(nil, nil, tabTitle, nil, barScroll)
 
 	v.compositionLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	v.compositionLabel.Wrapping = fyne.TextWrapWord
@@ -207,7 +207,7 @@ func (v *Bid) build() fyne.CanvasObject {
 	)
 
 	lists := container.NewBorder(
-		container.NewVBox(priceSection, widget.NewSeparator(), v.compositionLabel),
+		container.NewVBox(tabSection, widget.NewSeparator(), v.compositionLabel),
 		nil, nil, nil,
 		v.resultList,
 	)
@@ -290,42 +290,51 @@ func (v *Bid) updateCountLabel() {
 	v.countLabel.SetText(fmt.Sprintf("数量 %d ～ %d 件", int(v.countSlider.Lower), int(v.countSlider.Upper)))
 }
 
-// selectPrice 选中某个价位，并向装配层请求它的组合。
-func (v *Bid) selectPrice(index int) {
-	if index < 0 || index >= len(v.prices) {
+// selectCount 选中某个件数档位，并向装配层请求它的组合。
+func (v *Bid) selectCount(index int) {
+	if index < 0 || index >= len(v.counts) {
 		return
 	}
 
-	v.selectedPrice = index
+	v.selectedTab = index
 
-	for i, tab := range v.priceTabs {
+	for i, tab := range v.countTabs {
 		tab.setSelected(i == index)
 	}
 
 	v.compositionLabel.SetText("")
 
-	if v.OnSelectTotal != nil {
-		v.OnSelectTotal(v.prices[index].Total)
+	if v.OnSelectCount != nil {
+		v.OnSelectCount(v.counts[index])
 	}
 }
 
-// compositionSummary 生成组合区标题：当前价位的组合数。
+// compositionSummary 生成组合区标题：当前件数的组合数与总价范围。
 func (v *Bid) compositionSummary() string {
-	if v.selectedPrice < 0 || v.selectedPrice >= len(v.prices) {
+	if v.selectedTab < 0 || v.selectedTab >= len(v.counts) {
 		return ""
 	}
 
-	return fmt.Sprintf("%s 的组合：%d 种%s",
-		priceOptionLabel(v.prices[v.selectedPrice]), len(v.results), v.truncatedNote())
-}
+	count := v.counts[v.selectedTab]
 
-// truncatedNote 返回组合被截断时的说明。
-func (v *Bid) truncatedNote() string {
-	if !v.truncated {
-		return ""
+	if len(v.results) == 0 {
+		return fmt.Sprintf("%d 件：没有组合", count)
 	}
 
-	return "（组合过多，只列出前一部分）"
+	parts := []string{fmt.Sprintf("%d 件 的组合：%d 种", count, len(v.results))}
+	first, last := v.results[0].Total, v.results[len(v.results)-1].Total
+
+	if first == last {
+		parts = append(parts, fmt.Sprintf("总价 %s", formatValue(first)))
+	} else {
+		parts = append(parts, fmt.Sprintf("总价 %s ～ %s", formatValue(first), formatValue(last)))
+	}
+
+	if v.truncated {
+		parts = append(parts, "组合过多，只列出前一部分")
+	}
+
+	return strings.Join(parts, " · ")
 }
 
 // applyFilter 按关键字过滤标签区；只影响显示，不改动勾选状态。
@@ -415,22 +424,24 @@ func (v *Bid) requiredItems() []bid.Item {
 	return items
 }
 
-// updateHeader 刷新摘要：可用物品数与本次推测的价位范围。
+// updateHeader 刷新摘要：可用物品数与本次推测的件数档位。
 func (v *Bid) updateHeader() {
 	parts := []string{fmt.Sprintf("单格（1x1）物品 %d 件", len(v.items))}
 
 	switch {
 	case !v.inferred:
 		parts = append(parts, "填写后点「推测」")
-	case len(v.prices) == 0:
-		parts = append(parts, "没有符合条件的价位")
+	case len(v.counts) == 0:
+		parts = append(parts, "没有符合条件的件数")
+	case len(v.counts) == 1:
+		parts = append(parts, fmt.Sprintf("只有 %d 件有组合", v.counts[0]))
 	default:
-		parts = append(parts, fmt.Sprintf("%d 个价位（总价 %s ～ %s）", len(v.prices),
-			formatValue(v.prices[0].Total), formatValue(v.prices[len(v.prices)-1].Total)))
+		parts = append(parts, fmt.Sprintf("%d 个件数档位（%d ～ %d 件）",
+			len(v.counts), v.counts[0], v.counts[len(v.counts)-1]))
+	}
 
-		if v.requiredCount > 0 {
-			parts = append(parts, fmt.Sprintf("已确认 %d 件", v.requiredCount))
-		}
+	if v.requiredCount > 0 && v.inferred {
+		parts = append(parts, fmt.Sprintf("已确认 %d 件", v.requiredCount))
 	}
 
 	v.headerLabel.SetText(strings.Join(parts, " · "))
