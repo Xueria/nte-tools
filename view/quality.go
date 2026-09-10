@@ -1,13 +1,8 @@
 package view
 
-import (
-	"image/color"
+import "image/color"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-)
-
-// qualitySwatchSize 拍品表格里品质色块的边长。
+// qualitySwatchSize 品质色块的边长。
 const qualitySwatchSize float32 = 12
 
 // qualityLabels 品质标识的展示名，键与数据里的 quality 一致。
@@ -44,12 +39,4 @@ func qualityColor(quality string) color.Color {
 		return c
 	}
 	return nrgba(0x8A, 0x8A, 0x8A, 0xFF)
-}
-
-// qualitySwatch 生成拍品行前的品质色块。
-func qualitySwatch(quality string) fyne.CanvasObject {
-	swatch := canvas.NewRectangle(qualityColor(quality))
-	swatch.CornerRadius = 2
-	swatch.SetMinSize(fyne.NewSize(qualitySwatchSize, qualitySwatchSize))
-	return swatch
 }

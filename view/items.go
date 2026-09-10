@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"image/color"
 	"strconv"
 
 	"blind-tools/model/bid"
@@ -14,20 +15,31 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// previewCellSize 占格预览里单个格子的边长。
-const previewCellSize float32 = 34
+const (
+	// previewCellSize 占格预览里单个格子的边长。
+	previewCellSize float32 = 34
+	// itemCardWidth、itemCardHeight 拍品卡片的尺寸，GridWrap 按它换行。
+	itemCardWidth  float32 = 190
+	itemCardHeight float32 = 92
+	// itemNameWidth、itemNameHeight 卡片里名称的固定显示区，
+	// 超出部分交给 Label 的省略号截断，避免长名字把卡片撑宽。
+	itemNameWidth  float32 = 170
+	itemNameHeight float32 = 22
+)
 
-// Items 是「拍品清单」页：左侧按占格类型筛选，右侧画出该类型的占格并列出拍品。
+// Items 是「拍品清单」页：左侧按占格类型筛选，右侧画出该类型的占格并列出拍品卡片。
 type Items struct {
 	root fyne.CanvasObject
 
+	// grids 是全部占格数据，shown 是当前选中类型下的拍品。
 	grids []bid.Grid
+	shown []bid.Item
 
 	typeList     *widget.List
 	statusLabel  *widget.Label
 	previewLabel *widget.Label
 	previewBox   *fyne.Container
-	tableBox     *fyne.Container
+	cardGrid     *widget.GridWrap
 }
 
 // NewItems 构建拍品清单页。
@@ -51,8 +63,8 @@ func (v *Items) SetBidGrids(grids []bid.Grid) {
 		v.previewLabel.SetText("暂无竞拍数据")
 		v.previewBox.Objects = nil
 		v.previewBox.Refresh()
-		v.tableBox.Objects = nil
-		v.tableBox.Refresh()
+		v.shown = nil
+		v.cardGrid.Refresh()
 		return
 	}
 
@@ -72,10 +84,8 @@ func (v *Items) SetStatus(text string) {
 	}
 }
 
-// build 组装左侧类型选择器与右侧占格预览、拍品表格。
+// build 组装左侧类型选择器与右侧占格预览、拍品卡片。
 func (v *Items) build() fyne.CanvasObject {
-	title := widget.NewLabelWithStyle("拍品清单", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-
 	v.typeList = widget.NewList(
 		func() int { return len(v.grids) },
 		func() fyne.CanvasObject { return widget.NewLabel("") },
@@ -95,18 +105,26 @@ func (v *Items) build() fyne.CanvasObject {
 
 	v.previewLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	v.previewBox = container.NewVBox()
-	v.tableBox = container.NewVBox()
 
-	detail := container.NewVBox(v.previewLabel, v.previewBox, widget.NewSeparator(), v.tableBox)
+	v.cardGrid = widget.NewGridWrap(
+		func() int { return len(v.shown) },
+		func() fyne.CanvasObject { return newItemCard() },
+		func(id widget.GridWrapItemID, obj fyne.CanvasObject) {
+			obj.(*itemCard).set(v.shown[id])
+		},
+	)
+
+	preview := container.NewVBox(v.previewLabel, v.previewBox, widget.NewSeparator())
 
 	// 内侧留空隙，让左右两块面板读起来是独立表面。
 	left = container.New(layout.NewCustomPaddedLayout(0, 0, 0, 8), left)
-	right := container.New(layout.NewCustomPaddedLayout(0, 0, 8, 0), container.NewVScroll(detail))
+	right := container.New(layout.NewCustomPaddedLayout(0, 0, 8, 0),
+		container.NewBorder(preview, nil, nil, nil, v.cardGrid))
 
 	split := container.NewHSplit(left, right)
 	split.Offset = 0.22
 
-	return container.NewBorder(container.NewVBox(title, widget.NewSeparator()), nil, nil, nil, split)
+	return split
 }
 
 // selectGrid 渲染第 index 个占格类型。
@@ -120,7 +138,12 @@ func (v *Items) selectGrid(index int) {
 	v.previewLabel.SetText(fmt.Sprintf("%dx%d 占格 · %d 件拍品", grid.Length, grid.Width, len(grid.Items)))
 	v.previewBox.Objects = []fyne.CanvasObject{footprint(grid.Length, grid.Width)}
 	v.previewBox.Refresh()
-	v.rebuildTable(grid)
+
+	v.shown = grid.Items
+	// 换类型时回到顶部：用 ScrollToOffset 而非 ScrollToTop，
+	// 后者在渲染器尚未创建时会解引用空的 scroller。
+	v.cardGrid.ScrollToOffset(0)
+	v.cardGrid.Refresh()
 }
 
 // footprint 画出 length 列、width 行的占格形状。
@@ -149,32 +172,58 @@ func previewCell() fyne.CanvasObject {
 	return cell
 }
 
-// rebuildTable 重建拍品表格：名称、品质、价格三列。
-func (v *Items) rebuildTable(grid bid.Grid) {
-	rows := []fyne.CanvasObject{
-		container.NewGridWithColumns(3,
-			tableCell("名称", true, fyne.TextAlignLeading),
-			tableCell("品质", true, fyne.TextAlignLeading),
-			tableCell("价格", true, fyne.TextAlignTrailing),
-		),
-		widget.NewSeparator(),
-	}
+// itemCard 是拍品清单里的一张拍品卡片：品质色块 + 品质名、名称与价格。
+type itemCard struct {
+	*fyne.Container
 
-	for _, item := range grid.Items {
-		rows = append(rows, container.NewGridWithColumns(3,
-			widget.NewLabel(item.Name),
-			container.NewHBox(qualitySwatch(item.Quality), widget.NewLabel(qualityLabel(item.Quality))),
-			tableCell(strconv.Itoa(item.Value), false, fyne.TextAlignTrailing),
-		))
-	}
-
-	v.tableBox.Objects = rows
-	v.tableBox.Refresh()
+	name    *widget.Label
+	quality *widget.Label
+	swatch  *canvas.Rectangle
+	value   *widget.Label
 }
 
-// tableCell 生成一个表格单元。
-func tableCell(text string, bold bool, align fyne.TextAlign) fyne.CanvasObject {
-	return widget.NewLabelWithStyle(text, align, fyne.TextStyle{Bold: bold})
+// newItemCard 构建一张空卡片，内容由 set 填充。
+func newItemCard() *itemCard {
+	background := canvas.NewRectangle(cardBackground())
+	background.CornerRadius = 10
+	background.SetMinSize(fyne.NewSize(itemCardWidth, itemCardHeight))
+
+	name := widget.NewLabel("")
+	name.Truncation = fyne.TextTruncateEllipsis
+
+	quality := widget.NewLabel("")
+
+	swatch := canvas.NewRectangle(color.Transparent)
+	swatch.CornerRadius = 2
+	swatch.SetMinSize(fyne.NewSize(qualitySwatchSize, qualitySwatchSize))
+
+	value := widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{Bold: true})
+
+	nameBox := container.NewGridWrap(fyne.NewSize(itemNameWidth, itemNameHeight), name)
+	content := container.NewVBox(container.NewHBox(swatch, quality), nameBox, value)
+
+	return &itemCard{
+		Container: container.NewStack(background, container.NewPadded(content)),
+		name:      name,
+		quality:   quality,
+		swatch:    swatch,
+		value:     value,
+	}
+}
+
+// set 用一条拍品数据填充卡片。
+func (c *itemCard) set(item bid.Item) {
+	c.name.SetText(item.Name)
+	c.quality.SetText(qualityLabel(item.Quality))
+	c.swatch.FillColor = qualityColor(item.Quality)
+	c.swatch.Refresh()
+	c.value.SetText(strconv.Itoa(item.Value))
+}
+
+// cardBackground 返回拍品卡片的底色。
+func cardBackground() color.Color {
+	settings := fyne.CurrentApp().Settings()
+	return settings.Theme().Color(theme.ColorNameOverlayBackground, settings.ThemeVariant())
 }
 
 // gridTypeLabel 生成类型选择器里的一行：占格尺寸与拍品数。
