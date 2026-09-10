@@ -22,8 +22,8 @@ const (
 	compositionRowMinWidth float32 = 240
 	// compositionTextSize 结果行的字号。
 	compositionTextSize float32 = 12
-	// chipPanelRatio 标签区在上下分栏中的初始占比。
-	chipPanelRatio = 0.45
+	// filterPanelRatio 左侧筛选栏在左右分栏中的初始占比。
+	filterPanelRatio = 0.3
 )
 
 // Bid 是「单格推测」页：可用标签筛选可能出现的单格物品，输入单格均价与数量
@@ -108,8 +108,10 @@ func (v *Bid) SetStatus(text string) {
 	}
 }
 
-// build 组装上方输入、中部物品标签与下方结果列表。
+// build 组装左侧筛选栏与右侧输入、结果列表。
 func (v *Bid) build() fyne.CanvasObject {
+	left := v.buildFilter()
+
 	v.avgEntry = newCountEntry("例如 5000")
 	v.minEntry = newCountEntry("1")
 	v.maxEntry = newCountEntry("10")
@@ -129,23 +131,6 @@ func (v *Bid) build() fyne.CanvasObject {
 	v.statusLabel.Hide()
 
 	v.headerLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	v.selectionLabel = widget.NewLabel("")
-
-	v.searchEntry = widget.NewEntry()
-	v.searchEntry.SetPlaceHolder("搜索物品…")
-	v.searchEntry.OnChanged = v.applyFilter
-
-	buttons := container.NewHBox(
-		widget.NewButton("全选", func() { v.setVisibleChecked(true) }),
-		widget.NewButton("反选", v.invertVisible),
-		widget.NewButton("清空", func() { v.setVisibleChecked(false) }),
-	)
-	controls := container.NewBorder(nil, nil, nil, buttons, v.searchEntry)
-
-	v.chipFlow = newChipFlow()
-	// 滚动条浮在内容之上，把它的宽度留在内容右侧，最右一个标签才不会被压住。
-	chipContent := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), v.chipFlow)
-	chipScroll := container.NewVScroll(chipContent)
 
 	v.resultList = widget.NewList(
 		func() int { return len(v.results) },
@@ -157,19 +142,44 @@ func (v *Bid) build() fyne.CanvasObject {
 
 	v.updateHeader()
 
-	top := container.NewVBox(
-		form,
-		inferButton,
-		v.statusLabel,
-		v.headerLabel,
-		controls,
-		widget.NewSeparator(),
+	top := container.NewVBox(form, inferButton, v.statusLabel, v.headerLabel, widget.NewSeparator())
+	right := container.NewBorder(top, nil, nil, nil, v.resultList)
+
+	// 内侧留空隙，让左右两块面板读起来是独立表面。
+	left = container.New(layout.NewCustomPaddedLayout(0, 0, 0, 8), left)
+	right = container.New(layout.NewCustomPaddedLayout(0, 0, 8, 0), right)
+
+	split := container.NewHSplit(left, right)
+	split.Offset = filterPanelRatio
+
+	return split
+}
+
+// buildFilter 构建左侧的物品筛选栏。
+func (v *Bid) buildFilter() fyne.CanvasObject {
+	header := widget.NewLabelWithStyle("参与推测的物品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
+	v.selectionLabel = widget.NewLabel("")
+	v.selectionLabel.Wrapping = fyne.TextWrapWord
+
+	v.searchEntry = widget.NewEntry()
+	v.searchEntry.SetPlaceHolder("搜索物品…")
+	v.searchEntry.OnChanged = v.applyFilter
+
+	buttons := container.NewHBox(
+		widget.NewButton("全选", func() { v.setVisibleChecked(true) }),
+		widget.NewButton("反选", v.invertVisible),
+		widget.NewButton("清空", func() { v.setVisibleChecked(false) }),
 	)
 
-	panels := container.NewVSplit(chipScroll, v.resultList)
-	panels.Offset = chipPanelRatio
+	v.chipFlow = newChipFlow(true)
+	// 滚动条浮在内容之上，把它的宽度留在内容右侧，标签才不会被压住。
+	content := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), v.chipFlow)
+	scroll := container.NewVScroll(content)
 
-	return container.NewBorder(top, nil, nil, nil, panels)
+	top := container.NewVBox(header, v.selectionLabel, v.searchEntry, buttons, widget.NewSeparator())
+
+	return container.NewBorder(top, nil, nil, nil, scroll)
 }
 
 // applyFilter 按关键字过滤标签区；只影响显示，不改动勾选状态。

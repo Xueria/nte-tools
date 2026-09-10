@@ -141,23 +141,25 @@ func (r *chipRenderer) MinSize() fyne.Size {
 	return r.chip.MinSize()
 }
 
-// chipFlow 把标签横向排布，一行放不下就换到下一行。
+// chipFlow 排列标签：默认横向流式换行，单列模式下每个标签独占一行并铺满宽度。
 type chipFlow struct {
 	widget.BaseWidget
 
 	chips []fyne.CanvasObject
 	rows  int
+	// single 为 true 时一行一个标签（用于左侧窄栏）。
+	single bool
 }
 
-// newChipFlow 构建一个空的标签流。
-func newChipFlow() *chipFlow {
-	flow := &chipFlow{rows: 1}
+// newChipFlow 构建一个空的标签区；single 为 true 时一行一个标签。
+func newChipFlow(single bool) *chipFlow {
+	flow := &chipFlow{rows: 1, single: single}
 	flow.ExtendBaseWidget(flow)
 
 	return flow
 }
 
-// setChips 用新的标签替换流的内容。
+// setChips 用新的标签替换内容。
 func (f *chipFlow) setChips(chips []fyne.CanvasObject) {
 	f.chips = chips
 	f.rows = 1
@@ -184,7 +186,7 @@ func (f *chipFlow) MinSize() fyne.Size {
 	return fyne.NewSize(width, float32(rows)*chipHeight+float32(rows-1)*chipGap)
 }
 
-// CreateRenderer 创建标签流的绘制对象。
+// CreateRenderer 创建标签区的绘制对象。
 func (f *chipFlow) CreateRenderer() fyne.WidgetRenderer {
 	return &chipFlowRenderer{baseRenderer: baseRenderer{}, flow: f}
 }
@@ -199,25 +201,35 @@ func (r *chipFlowRenderer) Layout(size fyne.Size) {
 	chips := r.flow.chips
 	r.SetObjects(chips)
 
-	x, y := float32(0), float32(0)
 	rows := 1
 
-	for _, child := range chips {
-		width := child.MinSize().Width
-
-		if x > 0 && x+chipGap+width > size.Width {
-			x = 0
-			y += chipHeight + chipGap
-			rows++
+	if r.flow.single {
+		for i, child := range chips {
+			child.Move(fyne.NewPos(0, float32(i)*(chipHeight+chipGap)))
+			child.Resize(fyne.NewSize(size.Width, chipHeight))
 		}
 
-		child.Move(fyne.NewPos(x, y))
-		child.Resize(fyne.NewSize(width, chipHeight))
+		rows = len(chips)
+	} else {
+		x, y := float32(0), float32(0)
 
-		x += width + chipGap
+		for _, child := range chips {
+			width := child.MinSize().Width
+
+			if x > 0 && x+chipGap+width > size.Width {
+				x = 0
+				y += chipHeight + chipGap
+				rows++
+			}
+
+			child.Move(fyne.NewPos(x, y))
+			child.Resize(fyne.NewSize(width, chipHeight))
+
+			x += width + chipGap
+		}
 	}
 
-	if len(chips) == 0 {
+	if rows < 1 {
 		rows = 1
 	}
 
