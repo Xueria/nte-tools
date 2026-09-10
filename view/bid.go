@@ -77,7 +77,7 @@ func (v *Bid) SetCellItems(items []bid.Item) {
 	v.selected = make([]bool, len(items))
 	v.chips = make([]*chip, 0, len(items))
 
-	for i := range v.selected {
+	for range items {
 		v.chips = append(v.chips, newChip(v))
 	}
 
