@@ -34,11 +34,11 @@ type RangeSlider struct {
 	// OnChanged is called whenever Lower or Upper changes.
 	OnChanged func(lower, upper float64)
 
-	hovered  bool
-	focused  bool
-	disabled bool
-	active   int // thumb controlled by keyboard: 0 = lower, 1 = upper
-	dragging int // thumb being dragged: -1 = none, 0 = lower, 1 = upper
+	hovered       bool
+	focused       bool
+	disabled      bool
+	keyboardThumb int // thumb controlled by keyboard: 0 = lower, 1 = upper
+	dragging      int // thumb being dragged: -1 = none, 0 = lower, 1 = upper
 
 	hoveredThumb int // thumb under the pointer: -1 = none, 0 = lower, 1 = upper
 }
@@ -120,8 +120,8 @@ func (s *RangeSlider) Tapped(e *fyne.PointEvent) {
 	if s.disabled {
 		return
 	}
-	s.active = s.nearestThumb(e.Position.X)
-	s.applyToThumb(s.active, e.Position.X)
+	s.keyboardThumb = s.nearestThumb(e.Position.X)
+	s.applyToThumb(s.keyboardThumb, e.Position.X)
 }
 
 // applyToThumb sets the given thumb to the value under the pointer and clamps
@@ -233,20 +233,20 @@ func (s *RangeSlider) MouseOut() {
 	}
 }
 
-// TypedKey moves the active thumb with the arrow keys.
+// TypedKey moves the keyboard thumb with the arrow keys.
 func (s *RangeSlider) TypedKey(key *fyne.KeyEvent) {
 	if s.disabled {
 		return
 	}
 	switch key.Name {
 	case fyne.KeyLeft:
-		s.nudge(s.active, -s.Step)
+		s.nudge(s.keyboardThumb, -s.Step)
 	case fyne.KeyRight:
-		s.nudge(s.active, s.Step)
+		s.nudge(s.keyboardThumb, s.Step)
 	case fyne.KeyHome:
-		s.nudge(s.active, s.Min-s.Lower)
+		s.nudge(s.keyboardThumb, s.Min-s.Lower)
 	case fyne.KeyEnd:
-		s.nudge(s.active, s.Max-s.Lower)
+		s.nudge(s.keyboardThumb, s.Max-s.Lower)
 	}
 }
 
@@ -315,16 +315,16 @@ func (s *RangeSlider) CreateRenderer() fyne.WidgetRenderer {
 	v := fyne.CurrentApp().Settings().ThemeVariant()
 
 	track := canvas.NewRectangle(th.Color(theme.ColorNameInputBackground, v))
-	active := canvas.NewRectangle(th.Color(theme.ColorNamePrimary, v))
+	activeRange := canvas.NewRectangle(th.Color(theme.ColorNamePrimary, v))
 	lowerThumb := &canvas.Circle{FillColor: th.Color(theme.ColorNamePrimary, v)}
 	upperThumb := &canvas.Circle{FillColor: th.Color(theme.ColorNamePrimary, v)}
 	focusIndicator := &canvas.Circle{FillColor: color.Transparent}
 
-	objects := []fyne.CanvasObject{track, active, focusIndicator, lowerThumb, upperThumb}
+	objects := []fyne.CanvasObject{track, activeRange, focusIndicator, lowerThumb, upperThumb}
 	r := &rangeSliderRenderer{
 		baseRenderer:   baseRenderer{objects: objects},
 		track:          track,
-		active:         active,
+		activeRange:    activeRange,
 		lowerThumb:     lowerThumb,
 		upperThumb:     upperThumb,
 		focusIndicator: focusIndicator,
@@ -367,7 +367,7 @@ type rangeSliderRenderer struct {
 	baseRenderer
 
 	track          *canvas.Rectangle
-	active         *canvas.Rectangle
+	activeRange    *canvas.Rectangle
 	lowerThumb     *canvas.Circle
 	upperThumb     *canvas.Circle
 	focusIndicator *canvas.Circle
@@ -384,11 +384,11 @@ func (r *rangeSliderRenderer) Refresh() {
 	if r.slider.disabled {
 		r.lowerThumb.FillColor = th.Color(theme.ColorNameDisabled, v)
 		r.upperThumb.FillColor = th.Color(theme.ColorNameDisabled, v)
-		r.active.FillColor = th.Color(theme.ColorNameDisabled, v)
+		r.activeRange.FillColor = th.Color(theme.ColorNameDisabled, v)
 	} else {
 		r.lowerThumb.FillColor = th.Color(theme.ColorNamePrimary, v)
 		r.upperThumb.FillColor = th.Color(theme.ColorNamePrimary, v)
-		r.active.FillColor = th.Color(theme.ColorNamePrimary, v)
+		r.activeRange.FillColor = th.Color(theme.ColorNamePrimary, v)
 	}
 
 	if r.slider.focused && !r.slider.disabled {
@@ -428,9 +428,9 @@ func (r *rangeSliderRenderer) Layout(size fyne.Size) {
 	// Active range between the two thumbs
 	lowerPos := r.slider.positionOf(r.slider.Lower, pad, size)
 	upperPos := r.slider.positionOf(r.slider.Upper, pad, size)
-	activePos := fyne.NewPos(lowerPos, trackPos.Y)
-	r.active.Move(activePos)
-	r.active.Resize(fyne.NewSize(upperPos-lowerPos, trackWidth))
+	activeRangePos := fyne.NewPos(lowerPos, trackPos.Y)
+	r.activeRange.Move(activeRangePos)
+	r.activeRange.Resize(fyne.NewSize(upperPos-lowerPos, trackWidth))
 
 	// Thumbs
 	thumbY := trackPos.Y - (diameter-trackSize.Height)/2
@@ -439,9 +439,9 @@ func (r *rangeSliderRenderer) Layout(size fyne.Size) {
 	r.upperThumb.Move(fyne.NewPos(upperPos-diameter/2, thumbY))
 	r.upperThumb.Resize(fyne.NewSize(diameter, diameter))
 
-	// Focus indicator follows the hovered thumb, falling back to the active
-	// (keyboard) thumb when not hovering.
-	thumb := r.slider.active
+	// Focus indicator follows the hovered thumb, falling back to the keyboard
+	// thumb when not hovering.
+	thumb := r.slider.keyboardThumb
 	if r.slider.hovered && r.slider.hoveredThumb >= 0 {
 		thumb = r.slider.hoveredThumb
 	}

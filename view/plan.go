@@ -28,23 +28,23 @@ type planResult struct {
 // range [start, end], using the following lexicographic objective:
 //
 //  1. maximise the number of completed draws;
-//  2. minimise spending of the preferred currency (when preferKeep != "");
+//  2. minimise spending of the preferred currency (when preferredID != "");
 //  3. minimise the imbalance between the remaining fractions of each currency.
 //
 // Because the number of draws is small, it enumerates every currency assignment
 // (each draw independently chooses one of its accepted currencies) and keeps
 // the best one, which is guaranteed to be optimal.
-func calculatePlan(container model.Container, start, end int, balances map[string]int, preferKeep string) planResult {
-	costs := buildCostLookup(container)
-	order := currencyOrder(container)
+func calculatePlan(box model.BlindBox, start, end int, balances map[string]int, preferredID string) planResult {
+	costs := buildCostLookup(box)
+	order := currencyOrder(box)
 
 	// Effective draws: only those with at least one payment option. A draw with
 	// no option (missing/empty price) cannot be paid, so the plan stops before it.
 	var draws []int
-	hardFail := 0
+	unpayableDraw := 0
 	for d := start; d <= end; d++ {
 		if len(costs[d]) == 0 {
-			hardFail = d
+			unpayableDraw = d
 			break
 		}
 		draws = append(draws, d)
@@ -66,7 +66,7 @@ func calculatePlan(container model.Container, start, end int, balances map[strin
 	var search func(idx int)
 	search = func(idx int) {
 		if idx == len(draws) {
-			c := evaluateCandidate(draws, choices, costs, balances, preferKeep)
+			c := evaluateCandidate(draws, choices, costs, balances, preferredID)
 			if c.better(best) {
 				best = c
 				copy(bestChoices, choices)
@@ -88,7 +88,7 @@ func calculatePlan(container model.Container, start, end int, balances map[strin
 		res.Steps = append(res.Steps, planStep{
 			Draw:         draws[i],
 			CurrencyID:   id,
-			CurrencyName: currencyName(container, id),
+			CurrencyName: currencyName(box, id),
 			Cost:         cost,
 			Remaining:    res.Final[id],
 		})
@@ -97,9 +97,9 @@ func calculatePlan(container model.Container, start, end int, balances map[strin
 	if best.completed < len(draws) {
 		res.Insufficient = true
 		res.FailAtDraw = draws[best.completed]
-	} else if hardFail != 0 {
+	} else if unpayableDraw != 0 {
 		res.Insufficient = true
-		res.FailAtDraw = hardFail
+		res.FailAtDraw = unpayableDraw
 	}
 
 	return res
@@ -126,7 +126,7 @@ func (c candidate) better(o candidate) bool {
 
 // evaluateCandidate walks an assignment (choices[i] pays draws[i]) and returns
 // how many draws it completes before running out, plus its score.
-func evaluateCandidate(draws []int, choices []string, costs map[int]map[string]int, balances map[string]int, preferKeep string) candidate {
+func evaluateCandidate(draws []int, choices []string, costs map[int]map[string]int, balances map[string]int, preferredID string) candidate {
 	spent := make(map[string]int, len(balances))
 	completed := 0
 
@@ -140,8 +140,8 @@ func evaluateCandidate(draws []int, choices []string, costs map[int]map[string]i
 	}
 
 	preferredSpent := 0
-	if preferKeep != "" {
-		preferredSpent = spent[preferKeep]
+	if preferredID != "" {
+		preferredSpent = spent[preferredID]
 	}
 
 	return candidate{
@@ -178,9 +178,9 @@ func imbalanceOf(balances, spent map[string]int) float64 {
 }
 
 // buildCostLookup maps a draw number (1 based) to its cost table.
-func buildCostLookup(container model.Container) map[int]map[string]int {
-	costs := make(map[int]map[string]int, len(container.Manifest.Prices))
-	for _, price := range container.Manifest.Prices {
+func buildCostLookup(box model.BlindBox) map[int]map[string]int {
+	costs := make(map[int]map[string]int, len(box.Manifest.Prices))
+	for _, price := range box.Manifest.Prices {
 		table := make(map[string]int, len(price.Cost))
 		maps.Copy(table, price.Cost)
 		costs[price.Draw] = table
@@ -189,17 +189,17 @@ func buildCostLookup(container model.Container) map[int]map[string]int {
 }
 
 // currencyOrder returns every currency id in a deterministic order: the
-// declared container currencies first, then any cost-table keys that are not
+// declared box currencies first, then any cost-table keys that are not
 // declared currencies.
-func currencyOrder(container model.Container) []string {
-	seen := make(map[string]bool, len(container.Currencies)+1)
-	order := make([]string, 0, len(container.Currencies)+1)
+func currencyOrder(box model.BlindBox) []string {
+	seen := make(map[string]bool, len(box.Currencies)+1)
+	order := make([]string, 0, len(box.Currencies)+1)
 
-	for _, currency := range container.Currencies {
+	for _, currency := range box.Currencies {
 		order = append(order, currency.ID)
 		seen[currency.ID] = true
 	}
-	for _, price := range container.Manifest.Prices {
+	for _, price := range box.Manifest.Prices {
 		for id := range price.Cost {
 			if !seen[id] {
 				order = append(order, id)
@@ -223,8 +223,8 @@ func drawCurrencies(draw int, costs map[int]map[string]int, order []string) []st
 }
 
 // currencyName resolves a currency ID to its display name.
-func currencyName(container model.Container, id string) string {
-	for _, currency := range container.Currencies {
+func currencyName(box model.BlindBox, id string) string {
+	for _, currency := range box.Currencies {
 		if currency.ID == id {
 			return currency.Name
 		}
@@ -232,11 +232,11 @@ func currencyName(container model.Container, id string) string {
 	return id
 }
 
-// sortedCurrencyIDs returns the container currency IDs in a stable order, used
-// to present final balances consistently.
-func sortedCurrencyIDs(container model.Container) []string {
-	ids := make([]string, 0, len(container.Currencies))
-	for _, currency := range container.Currencies {
+// sortedCurrencyIDs returns the box currency IDs in a stable order, used to
+// present final balances consistently.
+func sortedCurrencyIDs(box model.BlindBox) []string {
+	ids := make([]string, 0, len(box.Currencies))
+	for _, currency := range box.Currencies {
 		ids = append(ids, currency.ID)
 	}
 	sort.Strings(ids)

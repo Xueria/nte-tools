@@ -1,7 +1,6 @@
-package view
+package model
 
 import (
-	"blind-tools/model"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,18 +12,17 @@ import (
 	"time"
 )
 
-// remoteBaseURL is the remote GitHub folder that provides the remote blind
-// boxes. It must point at a raw.githubusercontent.com path whose structure
-// mirrors the local data folder:
+// DefaultRemoteBaseURL 远程盲盒数据的 GitHub 目录。它必须指向一个
+// raw.githubusercontent.com 路径，其结构与本地 DataDirectory 一致：
 //
 //	<folder>/
-//	  currency.json          (optional section-global currency)
+//	  currency.json          (可选的段落级全局货币)
 //	  <blind-box>/
-//	    manifest.json        (required)
-//	    currency.json        (optional, falls back to the section-global one)
+//	    manifest.json        (必需)
+//	    currency.json        (可选，缺失时回退到段落级全局货币)
 //
-// Set it to "" to disable the remote section.
-const remoteBaseURL = "https://raw.githubusercontent.com/Xueria/blind-tools/refs/heads/master/data"
+// 置为空字符串可关闭远程数据。
+const DefaultRemoteBaseURL = "https://raw.githubusercontent.com/Xueria/blind-tools/refs/heads/master/data"
 
 const (
 	githubAPIBase = "https://api.github.com"
@@ -36,10 +34,9 @@ var errRemoteNotFound = errors.New("remote not found")
 // remoteHTTP is the HTTP client used for all GitHub requests.
 var remoteHTTP = &http.Client{Timeout: 15 * time.Second}
 
-// LoadRemoteContainers loads blind boxes from the given raw GitHub folder URL.
-// The URL is passed in explicitly so this function stays decoupled from the
-// configured remote source and can be tested on its own.
-func LoadRemoteContainers(rawURL string) ([]model.Container, error) {
+// LoadRemoteBoxes 从给定的 raw GitHub 目录 URL 加载盲盒。
+// URL 由调用方显式传入，使本函数与具体远程源解耦，可单独测试。
+func LoadRemoteBoxes(rawURL string) ([]BlindBox, error) {
 	if rawURL == "" {
 		return nil, nil
 	}
@@ -50,7 +47,7 @@ func LoadRemoteContainers(rawURL string) ([]model.Container, error) {
 	}
 
 	// Section-global currency (mirrors the local data/currency.json).
-	globalCurrency, err := fetchCurrency(rawFileURL(owner, repo, branch, path, model.CurrencyFile))
+	globalCurrency, err := fetchCurrency(rawFileURL(owner, repo, branch, path, CurrencyFile))
 	if err != nil {
 		log.Printf("remote: load global currency failed: %v", err)
 	}
@@ -60,7 +57,7 @@ func LoadRemoteContainers(rawURL string) ([]model.Container, error) {
 		return nil, err
 	}
 
-	var containers []model.Container
+	var boxes []BlindBox
 	for _, entry := range entries {
 		if entry.Type != "dir" {
 			continue
@@ -75,35 +72,35 @@ func LoadRemoteContainers(rawURL string) ([]model.Container, error) {
 			continue
 		}
 
-		localCurrency, err := fetchCurrency(rawFileURL(owner, repo, branch, entry.Path, model.CurrencyFile))
+		localCurrency, err := fetchCurrency(rawFileURL(owner, repo, branch, entry.Path, CurrencyFile))
 		if err != nil {
-			log.Printf("remote: container %s: load local currency failed: %v", entry.Name, err)
+			log.Printf("remote: blind box %s: load local currency failed: %v", entry.Name, err)
 		}
 
-		container := model.Container{Manifest: manifest}
+		box := BlindBox{Manifest: manifest}
 		if localCurrency != nil {
-			container.Currencies = localCurrency
+			box.Currencies = localCurrency
 		} else {
-			container.Currencies = globalCurrency
+			box.Currencies = globalCurrency
 		}
-		if container.Currencies == nil {
+		if box.Currencies == nil {
 			log.Printf("remote: skip %s: no currency info", entry.Name)
 			continue
 		}
 
-		if err := model.ValidateManifestPrices(container); err != nil {
+		if err := ValidateManifestPrices(box); err != nil {
 			log.Printf("remote: skip %s: %v", entry.Name, err)
 			continue
 		}
-		if err := model.ValidateManifestDraws(container); err != nil {
+		if err := ValidateManifestDraws(box); err != nil {
 			log.Printf("remote: skip %s: %v", entry.Name, err)
 			continue
 		}
 
-		containers = append(containers, container)
+		boxes = append(boxes, box)
 	}
 
-	return containers, nil
+	return boxes, nil
 }
 
 // parseRawURL splits a raw.githubusercontent.com link into owner, repo, branch
@@ -203,16 +200,16 @@ func listRemoteFolder(owner, repo, branch, path string) ([]ghEntry, error) {
 }
 
 // fetchManifest downloads and parses a manifest.json file.
-func fetchManifest(owner, repo, branch, folder string) (model.Manifest, error) {
-	var manifest model.Manifest
-	err := fetchJSON(rawFileURL(owner, repo, branch, folder, model.ManifestFile), &manifest)
+func fetchManifest(owner, repo, branch, folder string) (Manifest, error) {
+	var manifest Manifest
+	err := fetchJSON(rawFileURL(owner, repo, branch, folder, ManifestFile), &manifest)
 	return manifest, err
 }
 
 // fetchCurrency downloads and parses a currency.json file. A missing file
 // returns (nil, nil) so callers can fall back to the section-global currency.
-func fetchCurrency(rawURL string) ([]model.Currency, error) {
-	var currencies []model.Currency
+func fetchCurrency(rawURL string) ([]Currency, error) {
+	var currencies []Currency
 	if err := fetchJSON(rawURL, &currencies); err != nil {
 		if errors.Is(err, errRemoteNotFound) {
 			return nil, nil
