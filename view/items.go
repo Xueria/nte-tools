@@ -119,9 +119,10 @@ func (v *Items) build() fyne.CanvasObject {
 
 	preview := container.NewVBox(v.previewLabel, v.previewBox, widget.NewSeparator())
 
-	// 内侧留空隙，让左右两块面板读起来是独立表面。
+	// 内侧留空隙，让左右两块面板读起来是独立表面；右侧再留出浮动滚动条
+	// 的宽度，否则它会压住最右一列的文字。
 	left = container.New(layout.NewCustomPaddedLayout(0, 0, 0, 8), left)
-	right := container.New(layout.NewCustomPaddedLayout(0, 0, 8, 0),
+	right := container.New(layout.NewCustomPaddedLayout(0, 0, 8, scrollBarInset()),
 		container.NewBorder(preview, nil, nil, nil, v.cardScroll))
 
 	split := container.NewHSplit(left, right)
@@ -155,6 +156,12 @@ func (v *Items) selectGrid(index int) {
 	// 换类型时回到顶部。
 	v.cardScroll.Offset = fyne.NewPos(0, 0)
 	v.cardScroll.Refresh()
+}
+
+// scrollBarInset 返回浮动滚动条的宽度加一点余量：Fyne 的滚动条画在内容
+// 之上，不预留空间就会遮住最右一列的信息。
+func scrollBarInset() float32 {
+	return theme.Current().Size(theme.SizeNameScrollBar) + 6
 }
 
 // footprint 画出 length 列、width 行的占格形状。
