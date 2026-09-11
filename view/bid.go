@@ -31,8 +31,8 @@ const (
 	defaultMaxTotal = 10_000_000
 	// priorityQuality 关注的品质：含它的组合在结果里标星。
 	priorityQuality = "red"
-	// maxSummaryItems 已确认清单里最多列出几种物品，避免说明文字过长。
-	maxSummaryItems = 4
+	// availablePanelRatio 左栏上下的初始占比：上面是可选择物品，下面是已选择。
+	availablePanelRatio = 0.65
 )
 
 // Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价、数量区间与
@@ -46,13 +46,13 @@ type Bid struct {
 	countSlider   *RangeSlider
 	countLabel    *widget.Label
 
-	// 已确认物品
-	searchEntry    *widget.Entry
-	selectionLabel *widget.Label
-	chipFlow       *chipFlow
-	items          []bid.Item
-	confirmed      []int
-	chips          []*chip
+	// 已确认物品：上面是可选物品标签，下面是已选择标签
+	searchEntry  *widget.Entry
+	chipFlow     *chipFlow
+	selectedFlow *chipFlow
+	items        []bid.Item
+	confirmed    []int
+	chips        []*chip
 
 	// 件数档位
 	countBar    *fyne.Container
@@ -103,8 +103,7 @@ func (v *Bid) SetCellItems(items []bid.Item) {
 
 	v.configureCountSlider()
 	v.applyFilter(v.searchEntry.Text)
-	v.updateSelectionLabel()
-	v.updateHeader()
+	v.refreshSelection()
 }
 
 // SetCounts 展示新的件数档位，并默认选中最小的那个。
@@ -242,9 +241,6 @@ func (v *Bid) build() fyne.CanvasObject {
 func (v *Bid) buildFilter() fyne.CanvasObject {
 	header := widget.NewLabelWithStyle("已确认在里面的物品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
-	v.selectionLabel = widget.NewLabel("")
-	v.selectionLabel.Wrapping = fyne.TextWrapWord
-
 	v.searchEntry = widget.NewEntry()
 	v.searchEntry.SetPlaceHolder("搜索物品…")
 	v.searchEntry.OnChanged = v.applyFilter
@@ -252,18 +248,37 @@ func (v *Bid) buildFilter() fyne.CanvasObject {
 	controls := container.NewBorder(nil, nil, nil,
 		widget.NewButton("清空勾选", v.clearSelection), v.searchEntry)
 
-	v.chipFlow = newChipFlow()
-	// 滚动条浮在内容之上，把它的宽度留在内容右侧，标签才不会被压住。
-	content := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), v.chipFlow)
-	scroll := container.NewVScroll(content)
-
-	hint := widget.NewLabel("左键点一下加入一件，右键减少一件；同一物品可以加多件")
+	hint := widget.NewLabel("点一下物品加一件，右键减一件")
 	hint.Importance = widget.LowImportance
 	hint.Wrapping = fyne.TextWrapWord
 
-	top := container.NewVBox(header, hint, v.selectionLabel, controls, widget.NewSeparator())
+	v.chipFlow = newChipFlow()
+	available := container.NewBorder(
+		container.NewVBox(header, hint, controls, widget.NewSeparator()),
+		nil, nil, nil,
+		flowScroll(v.chipFlow),
+	)
 
-	return container.NewBorder(top, nil, nil, nil, scroll)
+	selectedTitle := widget.NewLabelWithStyle("已选择的物品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
+	v.selectedFlow = newChipFlow()
+	selected := container.NewBorder(
+		container.NewVBox(selectedTitle, widget.NewSeparator()),
+		nil, nil, nil,
+		flowScroll(v.selectedFlow),
+	)
+
+	split := container.NewVSplit(available, selected)
+	split.Offset = availablePanelRatio
+
+	return split
+}
+
+// flowScroll 把标签流放进滚动容器里，右侧留出滚动条的宽度。
+func flowScroll(flow *chipFlow) fyne.CanvasObject {
+	content := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), flow)
+
+	return container.NewVScroll(content)
 }
 
 // configureCountSlider 按可用物品数设置数量区间的滑块范围。
@@ -380,10 +395,8 @@ func (v *Bid) addItem(index int) {
 	}
 
 	v.confirmed[index]++
-	v.chips[index].set(index, v.items[index], v.confirmed[index])
 
-	v.updateSelectionLabel()
-	v.chipFlow.Refresh()
+	v.refreshSelection()
 }
 
 // removeItem 给某个物品减一件。
@@ -393,63 +406,64 @@ func (v *Bid) removeItem(index int) {
 	}
 
 	v.confirmed[index]--
-	v.chips[index].set(index, v.items[index], v.confirmed[index])
 
-	v.updateSelectionLabel()
-	v.chipFlow.Refresh()
+	v.refreshSelection()
+}
+
+// removeAll 把某个物品从已选择里整个移除。
+func (v *Bid) removeAll(index int) {
+	if index < 0 || index >= len(v.confirmed) || v.confirmed[index] == 0 {
+		return
+	}
+
+	v.confirmed[index] = 0
+
+	v.refreshSelection()
 }
 
 // clearSelection 取消所有已确认物品。
 func (v *Bid) clearSelection() {
+	changed := false
+
 	for i := range v.confirmed {
 		if v.confirmed[i] == 0 {
 			continue
 		}
 
 		v.confirmed[i] = 0
-		v.chips[i].set(i, v.items[i], 0)
+		changed = true
 	}
 
-	v.updateSelectionLabel()
-	v.chipFlow.Refresh()
+	if !changed {
+		return
+	}
+
+	v.refreshSelection()
 }
 
-// updateSelectionLabel 刷新已确认物品的说明。
-func (v *Bid) updateSelectionLabel() {
-	total := 0
-	parts := make([]string, 0, maxSummaryItems)
+// refreshSelection 重建可选物品的计数标签、已选择区与摘要。
+func (v *Bid) refreshSelection() {
+	for i, item := range v.items {
+		v.chips[i].set(i, item, v.confirmed[i])
+	}
+
+	v.chipFlow.Refresh()
+
+	selected := make([]fyne.CanvasObject, 0, len(v.items))
 
 	for i, item := range v.items {
 		if v.confirmed[i] == 0 {
 			continue
 		}
 
-		total += v.confirmed[i]
-
-		if len(parts) >= maxSummaryItems {
-			continue
-		}
-
-		if v.confirmed[i] > 1 {
-			parts = append(parts, fmt.Sprintf("%s×%d", item.Name, v.confirmed[i]))
-			continue
-		}
-
-		parts = append(parts, item.Name)
+		chip := newSelectedChip(v)
+		chip.set(i, item, v.confirmed[i])
+		selected = append(selected, chip)
 	}
 
-	if total == 0 {
-		v.selectionLabel.SetText(fmt.Sprintf("未勾选＝不限定，将从全部 %d 件里推测", len(v.items)))
-		return
-	}
+	v.selectedFlow.setChips(selected)
 
-	summary := strings.Join(parts, "、")
-
-	if len(parts) >= maxSummaryItems {
-		summary += " …"
-	}
-
-	v.selectionLabel.SetText(fmt.Sprintf("已确认 %d 件：%s", total, summary))
+	v.updateHeader()
 }
 
 // requiredItems 返回已确认在组合里的物品，按件数展开（同一物品可能出现多次）。

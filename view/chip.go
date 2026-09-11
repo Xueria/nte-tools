@@ -25,9 +25,12 @@ const (
 	chipTextSize float32 = 12
 	// chipMinWidth 标签的最小宽度，用于撑起标签流的宽度。
 	chipMinWidth float32 = 40
+	// selectedCrossSize、selectedCrossPadding 已选择标签里叉的尺寸与右侧留白。
+	selectedCrossSize    float32 = 12
+	selectedCrossPadding float32 = 8
 )
 
-// chip 是一个可增减的物品标签：左键点一下加入一件，右键减少一件。同一物品可以
+// chip 是可选物品区里的一个标签：左键点一下加入一件，右键减少一件。同一物品可以
 // 加多件（标签上显示 ×N），加过的标签高亮。
 type chip struct {
 	widget.BaseWidget
@@ -157,6 +160,152 @@ func chipTitle(name string, count int) string {
 	}
 
 	return fmt.Sprintf("%s ×%d", name, count)
+}
+
+// selectedChip 是已选择区里的标签：名称（×N）后面带一个叉。点叉移除该物品，
+// 点标签其余部分再加一件。
+type selectedChip struct {
+	widget.BaseWidget
+
+	page  *Bid
+	index int
+	item  bid.Item
+	count int
+}
+
+// newSelectedChip 构建一个空标签，内容由 set 填充。
+func newSelectedChip(page *Bid) *selectedChip {
+	chip := &selectedChip{page: page}
+	chip.ExtendBaseWidget(chip)
+
+	return chip
+}
+
+// set 设置标签对应的物品与件数。
+func (c *selectedChip) set(index int, item bid.Item, count int) {
+	c.index = index
+	c.item = item
+	c.count = count
+	c.Refresh()
+}
+
+// Tapped 点叉移除该物品，点其余部分再加一件。
+func (c *selectedChip) Tapped(event *fyne.PointEvent) {
+	if c.page == nil {
+		return
+	}
+
+	if event.Position.X >= c.Size().Width-selectedCrossSize-selectedCrossPadding {
+		c.page.removeAll(c.index)
+		return
+	}
+
+	c.page.addItem(c.index)
+}
+
+// MinSize 返回标签尺寸：文字加上右侧的叉。
+func (c *selectedChip) MinSize() fyne.Size {
+	c.ExtendBaseWidget(c)
+
+	width := c.labelWidth() + chipPadding*2 + chipDotSize + chipDotGap + selectedCrossSize + chipGap
+
+	return fyne.NewSize(width, chipHeight)
+}
+
+// labelWidth 返回标签文字需要的宽度。
+func (c *selectedChip) labelWidth() float32 {
+	return fyne.MeasureText(chipTitle(c.item.Name, c.count), chipTextSize, fyne.TextStyle{}).Width
+}
+
+// CreateRenderer 创建标签的绘制对象。叉用两条对角线画，避开字体里有没有 ✕ 的问题。
+func (c *selectedChip) CreateRenderer() fyne.WidgetRenderer {
+	background := canvas.NewRectangle(color.Transparent)
+	background.CornerRadius = chipHeight / 2
+
+	dot := canvas.NewRectangle(color.Transparent)
+	dot.CornerRadius = chipDotSize / 2
+
+	name := canvas.NewText("", color.White)
+	name.TextSize = chipTextSize
+
+	crossA := canvas.NewLine(color.White)
+	crossB := canvas.NewLine(color.White)
+	crossA.StrokeWidth = 1.5
+	crossB.StrokeWidth = 1.5
+
+	renderer := &selectedChipRenderer{
+		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{background, dot, name, crossA, crossB}},
+		chip:         c,
+		background:   background,
+		dot:          dot,
+		name:         name,
+		crossA:       crossA,
+		crossB:       crossB,
+	}
+	renderer.Refresh()
+
+	return renderer
+}
+
+type selectedChipRenderer struct {
+	baseRenderer
+
+	chip       *selectedChip
+	background *canvas.Rectangle
+	dot        *canvas.Rectangle
+	name       *canvas.Text
+	crossA     *canvas.Line
+	crossB     *canvas.Line
+}
+
+func (r *selectedChipRenderer) Refresh() {
+	th := r.chip.Theme()
+	variant := fyne.CurrentApp().Settings().ThemeVariant()
+
+	fill := th.Color(theme.ColorNamePrimary, variant)
+	onFill := th.Color(theme.ColorNameForegroundOnPrimary, variant)
+
+	r.background.FillColor = fill
+	r.background.StrokeColor = fill
+
+	r.dot.FillColor = qualityColor(r.chip.item.Quality)
+
+	r.name.Color = onFill
+	r.name.Text = chipTitle(r.chip.item.Name, r.chip.count)
+
+	r.crossA.StrokeColor = onFill
+	r.crossB.StrokeColor = onFill
+
+	canvas.Refresh(r.chip)
+}
+
+func (r *selectedChipRenderer) Layout(size fyne.Size) {
+	lineHeight := chipTextSize + 4
+
+	r.background.Resize(size)
+
+	r.dot.Move(fyne.NewPos(chipPadding, (size.Height-chipDotSize)/2))
+	r.dot.Resize(fyne.NewSize(chipDotSize, chipDotSize))
+
+	nameLeft := chipPadding + chipDotSize + chipDotGap
+	crossLeft := size.Width - selectedCrossPadding - selectedCrossSize
+	nameWidth := crossLeft - nameLeft - chipGap
+
+	r.name.Move(fyne.NewPos(nameLeft, (size.Height-lineHeight)/2))
+	r.name.Resize(fyne.NewSize(nameWidth, lineHeight))
+	r.name.Text = fitText(chipTitle(r.chip.item.Name, r.chip.count), nameWidth, chipTextSize, fyne.TextStyle{})
+
+	top := (size.Height - selectedCrossSize) / 2
+	bottom := top + selectedCrossSize
+
+	r.crossA.Position1 = fyne.NewPos(crossLeft, top)
+	r.crossA.Position2 = fyne.NewPos(crossLeft+selectedCrossSize, bottom)
+	r.crossB.Position1 = fyne.NewPos(crossLeft, bottom)
+	r.crossB.Position2 = fyne.NewPos(crossLeft+selectedCrossSize, top)
+}
+
+func (r *selectedChipRenderer) MinSize() fyne.Size {
+	return r.chip.MinSize()
 }
 
 // chipFlow 把标签按内容宽度横向排列，一行放不下就换到下一行。
