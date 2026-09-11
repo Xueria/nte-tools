@@ -44,9 +44,10 @@ func LoadListings(directory string) ([]Listing, error) {
 	return listings, nil
 }
 
-// LoadListing 读取单个清单文件。文件名里的 <length>x<width> 与数据里的 name 都
-// 只是缺省值：长宽以数据为准、缺省时才看文件名，两者都没有即普通拍品清单；
-// 清单名以数据为准、缺省时才取文件名。因此文件名不再限制为 <length>x<width>。
+// LoadListing 读取单个清单文件。文件名里的 <length>x<width> 只是缺省值：
+// attribute 以数据为准、数据里没写时才看文件名，两者都没有即普通拍品清单；
+// 清单名同理，数据里的 name 优先、缺省时才取文件名。因此文件名不再限制为
+// <length>x<width>。
 func LoadListing(file string) (Listing, error) {
 	content, err := os.ReadFile(file)
 
@@ -61,7 +62,7 @@ func LoadListing(file string) (Listing, error) {
 	}
 
 	listing.Name = resolveListingName(listing.Name, file)
-	listing.Footprint = resolveFootprint(listing.Footprint, file)
+	listing.Attribute = resolveAttribute(listing.Attribute, file)
 
 	if err := ValidateListing(listing); err != nil {
 		return Listing{}, fmt.Errorf("validate %s failed: %w", file, err)
@@ -79,18 +80,18 @@ func resolveListingName(name, file string) string {
 	return strings.TrimSuffix(filepath.Base(file), ListingFileSuffix)
 }
 
-// resolveFootprint 返回清单的占格形状：数据里的长宽优先，缺省时用文件名里的
-// <length>x<width>，两者都没有则降级为普通拍品。
-func resolveFootprint(footprint Footprint, file string) Footprint {
-	if footprint.Length >= 1 && footprint.Width >= 1 {
-		return NewFootprint(footprint.Length, footprint.Width)
+// resolveAttribute 返回清单的属性：数据里写了 attribute 就以它为准，否则用
+// 文件名里的 <length>x<width>，两者都没有则降级为普通拍品。
+func resolveAttribute(attribute Attribute, file string) Attribute {
+	if !attribute.IsZero() {
+		return attribute.Normalize()
 	}
 
 	length, width, ok := ParseSizeFromName(filepath.Base(file))
 
 	if !ok {
-		return PlainFootprint()
+		return PlainAttribute()
 	}
 
-	return NewFootprint(length, width)
+	return GridAttribute(length, width)
 }

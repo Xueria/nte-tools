@@ -51,7 +51,7 @@ type InferQuery struct {
 // CellItems 取出单格（1x1）物品，供推测使用；普通拍品清单不算单格。
 func CellItems(listings []Listing) []Item {
 	for _, listing := range listings {
-		if listing.Footprint.Cell() {
+		if listing.Attribute.Cell() {
 			return listing.Items
 		}
 	}

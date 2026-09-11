@@ -36,8 +36,10 @@ func ValidateListing(listing Listing) error {
 		return fmt.Errorf("清单缺少名称")
 	}
 
-	if listing.Grid && (listing.Length < 1 || listing.Width < 1) {
-		return fmt.Errorf("占格尺寸必须为正：%dx%d", listing.Length, listing.Width)
+	attribute := listing.Attribute
+
+	if attribute.Grid && (attribute.Length < 1 || attribute.Width < 1) {
+		return fmt.Errorf("占格尺寸必须为正：%dx%d", attribute.Length, attribute.Width)
 	}
 
 	if len(listing.Items) == 0 {

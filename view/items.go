@@ -491,26 +491,30 @@ func listingViewFor(listing bid.Listing) listingView {
 // gridListingView 呈现带占格形状的清单：预览区画出 length×width 的格子。
 type gridListingView struct{}
 
-// Matches 判断清单是否带占格形状。
+// Matches 判断清单是否带占格属性。
 func (gridListingView) Matches(listing bid.Listing) bool {
-	return listing.Footprint.Grid
+	return listing.Attribute.Grid
 }
 
 // RowLabel 生成选择器里的一行：清单名、占格尺寸与拍品数。
 func (gridListingView) RowLabel(listing bid.Listing) string {
+	attribute := listing.Attribute
+
 	return fmt.Sprintf("%s · %dx%d（%d 件）",
-		listing.Name, listing.Footprint.Length, listing.Footprint.Width, len(listing.Items))
+		listing.Name, attribute.Length, attribute.Width, len(listing.Items))
 }
 
 // Header 生成预览区标题。
 func (gridListingView) Header(listing bid.Listing) string {
+	attribute := listing.Attribute
+
 	return fmt.Sprintf("%s · %dx%d 占格 · %d 件拍品",
-		listing.Name, listing.Footprint.Length, listing.Footprint.Width, len(listing.Items))
+		listing.Name, attribute.Length, attribute.Width, len(listing.Items))
 }
 
 // Preview 画出占格形状。
 func (gridListingView) Preview(listing bid.Listing) fyne.CanvasObject {
-	return footprint(listing.Footprint.Length, listing.Footprint.Width)
+	return footprint(listing.Attribute.Length, listing.Attribute.Width)
 }
 
 // plainListingView 呈现没有占格信息的普通拍品清单：不画格子，只列卡片。
