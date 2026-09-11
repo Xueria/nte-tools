@@ -1,4 +1,4 @@
-package model
+package blindbox
 
 type Currency struct {
 	ID   string `json:"id"`

@@ -1,14 +1,14 @@
-package model
+package blindbox
 
 import (
 	"fmt"
 	"sort"
 )
 
-// ValidateManifestPrices 校验盲盒 manifest 的价格表是否覆盖了该容器支持的所有货币
-func ValidateManifestPrices(container Container) error {
-	required := make(map[string]struct{}, len(container.Currencies))
-	for _, currency := range container.Currencies {
+// ValidateManifestPrices 校验盲盒 manifest 的价格表是否覆盖了该盲盒支持的所有货币
+func ValidateManifestPrices(box BlindBox) error {
+	required := make(map[string]struct{}, len(box.Currencies))
+	for _, currency := range box.Currencies {
 		required[currency.ID] = struct{}{}
 	}
 
@@ -17,7 +17,7 @@ func ValidateManifestPrices(container Container) error {
 	}
 
 	covered := make(map[string]struct{})
-	for _, price := range container.Manifest.Prices {
+	for _, price := range box.Manifest.Prices {
 		for currencyID := range price.Cost {
 			covered[currencyID] = struct{}{}
 		}
@@ -33,20 +33,20 @@ func ValidateManifestPrices(container Container) error {
 	if len(missing) > 0 {
 		sort.Strings(missing)
 		return fmt.Errorf("manifest %s (%s) price table missing currencies: %v",
-			container.Manifest.ID, container.Manifest.Name, missing)
+			box.Manifest.ID, box.Manifest.Name, missing)
 	}
 
 	return nil
 }
 
 // ValidateManifestDraws 校验盲盒 manifest 的价格表条目数严格等于 draws
-func ValidateManifestDraws(container Container) error {
-	actual := len(container.Manifest.Prices)
-	expected := container.Manifest.Draws
+func ValidateManifestDraws(box BlindBox) error {
+	actual := len(box.Manifest.Prices)
+	expected := box.Manifest.Draws
 
 	if actual != expected {
 		return fmt.Errorf("manifest %s (%s) price table has %d entries, want %d (draws)",
-			container.Manifest.ID, container.Manifest.Name, actual, expected)
+			box.Manifest.ID, box.Manifest.Name, actual, expected)
 	}
 
 	return nil

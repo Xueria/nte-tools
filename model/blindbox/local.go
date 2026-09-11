@@ -1,4 +1,4 @@
-package model
+package blindbox
 
 import (
 	"encoding/json"
@@ -9,18 +9,16 @@ import (
 )
 
 const (
-	GlobalDirectory = "data"
 	// ManifestFile 盲盒数据
 	// 包含盲盒价格
 	ManifestFile = "manifest.json"
 	// CurrencyFile 货币信息
 	CurrencyFile = "currency.json"
-	// ProbabilityFile 综合概率
-	// 这个目前没什么用
-	ProbabilityFile = "probability.json"
 )
 
-func LoadData(directory string) ([]Container, error) {
+// LoadLocalBoxes 读取 directory 下的所有盲盒子目录，目录由调用方决定。
+// 没有自带 currency.json 的盲盒回退到根目录的全局货币文件。
+func LoadLocalBoxes(directory string) ([]BlindBox, error) {
 	// 加载全局货币信息
 	globalCurrency, err := LoadCurrency(filepath.Join(directory, CurrencyFile))
 
@@ -35,15 +33,15 @@ func LoadData(directory string) ([]Container, error) {
 		return nil, fmt.Errorf("error read directory %s: %w", directory, err)
 	}
 
-	var containers []Container
+	var boxes []BlindBox
 
 	for _, file := range files {
 		if !file.IsDir() {
 			continue
 		}
 
-		containerDirectory := filepath.Join(directory, file.Name())
-		manifestFile := filepath.Join(containerDirectory, ManifestFile)
+		boxDirectory := filepath.Join(directory, file.Name())
+		manifestFile := filepath.Join(boxDirectory, ManifestFile)
 
 		content, err := os.ReadFile(manifestFile)
 
@@ -52,59 +50,55 @@ func LoadData(directory string) ([]Container, error) {
 			if os.IsNotExist(err) {
 				continue
 			}
-			log.Printf("skip container %s: read manifest failed: %v", containerDirectory, err)
+			log.Printf("skip blind box %s: read manifest failed: %v", boxDirectory, err)
 			continue
 		}
 
 		var manifest Manifest
 
 		if err := json.Unmarshal(content, &manifest); err != nil {
-			log.Printf("skip container %s: unmarshal manifest failed: %v", containerDirectory, err)
+			log.Printf("skip blind box %s: unmarshal manifest failed: %v", boxDirectory, err)
 			continue
 		}
 
 		// 加载本地货币信息
-		localCurrency, err := LoadCurrency(filepath.Join(containerDirectory, CurrencyFile))
+		localCurrency, err := LoadCurrency(filepath.Join(boxDirectory, CurrencyFile))
 
 		if err != nil {
-			log.Printf("container %s: load local currency failed: %v", containerDirectory, err)
+			log.Printf("blind box %s: load local currency failed: %v", boxDirectory, err)
 		}
 
 		if globalCurrency == nil && localCurrency == nil {
-			log.Printf("skip container %s: global currency and local currency are nil", containerDirectory)
+			log.Printf("skip blind box %s: global currency and local currency are nil", boxDirectory)
 			continue
 		}
 
-		var container Container
-
-		container.Manifest = manifest
+		box := BlindBox{Manifest: manifest}
 
 		if localCurrency != nil {
-			container.Currencies = localCurrency
+			box.Currencies = localCurrency
 		} else {
-			container.Currencies = globalCurrency
+			box.Currencies = globalCurrency
 		}
 
-		if err := ValidateManifestPrices(container); err != nil {
-			log.Printf("skip container: %v", err)
+		if err := ValidateManifestPrices(box); err != nil {
+			log.Printf("skip blind box: %v", err)
 			continue
 		}
 
-		if err := ValidateManifestDraws(container); err != nil {
-			log.Printf("skip container: %v", err)
+		if err := ValidateManifestDraws(box); err != nil {
+			log.Printf("skip blind box: %v", err)
 			continue
 		}
 
-		containers = append(containers, container)
+		boxes = append(boxes, box)
 	}
 
-	return containers, nil
+	return boxes, nil
 }
 
-func LoadDataDefault() ([]Container, error) {
-	return LoadData(GlobalDirectory)
-}
-
+// LoadCurrency 读取一个 currency.json 文件。
+// 文件不存在时返回 (nil, nil)，便于调用方回退到其它货币来源。
 func LoadCurrency(file string) ([]Currency, error) {
 	text, err := os.ReadFile(file)
 

@@ -1,7 +1,7 @@
 package view
 
 import (
-	"blind-tools/model"
+	"blind-tools/model/blindbox"
 	"errors"
 	"fmt"
 	"image/color"
@@ -16,34 +16,27 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// MainView assembles the application UI: a blind box list on the left and a
-// resource planning panel on the right.
-func MainView(window fyne.Window, containers []model.Container) fyne.CanvasObject {
-	// Apply the Material Design 3 theme for the whole app.
-	if a := fyne.CurrentApp(); a != nil {
-		a.Settings().SetTheme(NewMD3Theme())
-	}
-
-	v := &mainView{
-		localAll: containers,
-	}
-	v.localFiltered = append([]model.Container(nil), v.localAll...)
-
-	root := v.build()
-
-	// Load the remote section in the background so startup is not blocked.
-	v.startRemoteLoad()
-
-	return root
+// NewPlanner 构建盲盒规划页：左侧盲盒列表，右侧货币规划。
+func NewPlanner() *Planner {
+	v := &Planner{}
+	v.root = v.build()
+	return v
 }
 
-// mainView holds the mutable UI state.
-type mainView struct {
-	remoteAll      []model.Container
-	localAll       []model.Container
-	remoteFiltered []model.Container
-	localFiltered  []model.Container
-	selected       *model.Container
+// NewTab 返回该页的页签标题、图标与内容。
+func (v *Planner) NewTab() Tab {
+	return Tab{Title: "盲盒规划", Icon: theme.HomeIcon(), Content: v.root}
+}
+
+// Planner holds the mutable UI state of the blind box planner page.
+type Planner struct {
+	root fyne.CanvasObject
+
+	remoteAll      []blindbox.BlindBox
+	localAll       []blindbox.BlindBox
+	remoteFiltered []blindbox.BlindBox
+	localFiltered  []blindbox.BlindBox
+	selected       *blindbox.BlindBox
 	selectedNodeID string
 	remoteLoading  bool
 
@@ -52,23 +45,26 @@ type mainView struct {
 	statusLabel *widget.Label
 	leftPanel   *fyne.Container
 
-	formCard        *widget.Card
-	currencyEntries []*widget.Entry
-	keepSelect      *widget.Select
-	rangeSlider     *RangeSlider
-	rangeLabel      *widget.Label
-	calculateBtn    *widget.Button
+	formCard           *widget.Card
+	currencyEntries    []*widget.Entry
+	keepCurrencySelect *widget.Select
+	rangeSlider        *RangeSlider
+	rangeLabel         *widget.Label
+	calculateBtn       *widget.Button
 
 	resultBox    *fyne.Container
 	summaryLabel *widget.Label
 
-	plan     []planStep
-	fail     bool
-	failDraw int
+	plan             []blindbox.PlanStep
+	insufficient     bool
+	insufficientDraw int
+
+	// OnRefresh 由装配层赋值：用户点「刷新」时触发，页面本身不关心刷新要做什么。
+	OnRefresh func()
 }
 
 // build constructs the full split layout once.
-func (v *mainView) build() fyne.CanvasObject {
+func (v *Planner) build() fyne.CanvasObject {
 	left := v.buildLeft()
 	right := v.buildRight()
 
@@ -86,14 +82,18 @@ func (v *mainView) build() fyne.CanvasObject {
 }
 
 // buildLeft creates the search bar, refresh button and blind box list.
-func (v *mainView) buildLeft() fyne.CanvasObject {
+func (v *Planner) buildLeft() fyne.CanvasObject {
 	header := widget.NewLabelWithStyle("盲盒列表", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	v.searchEntry = widget.NewEntry()
 	v.searchEntry.SetPlaceHolder("搜索盲盒名称…")
 	v.searchEntry.OnChanged = v.applyFilter
 
-	refreshBtn := widget.NewButtonWithIcon("刷新", theme.ViewRefreshIcon(), v.refresh)
+	refreshBtn := widget.NewButtonWithIcon("刷新", theme.ViewRefreshIcon(), func() {
+		if v.OnRefresh != nil {
+			v.OnRefresh()
+		}
+	})
 	refreshBtn.Importance = widget.MediumImportance
 
 	searchRow := container.NewBorder(nil, nil, nil, refreshBtn, v.searchEntry)
@@ -137,7 +137,7 @@ func (v *mainView) buildLeft() fyne.CanvasObject {
 				}
 				return
 			}
-			if c, ok := v.containerFor(uid); ok {
+			if c, ok := v.boxFor(uid); ok {
 				obj.(*blindBoxItem).set(*c)
 			}
 		},
@@ -148,7 +148,7 @@ func (v *mainView) buildLeft() fyne.CanvasObject {
 			v.tree.Unselect(uid)
 			return
 		}
-		v.selectContainer(uid)
+		v.selectBox(uid)
 	}
 	v.tree.OpenAllBranches()
 
@@ -161,9 +161,9 @@ func (v *mainView) buildLeft() fyne.CanvasObject {
 	return v.leftPanel
 }
 
-// setStatus shows a transient message at the bottom of the left panel, or
+// SetStatus shows a transient message at the bottom of the left panel, or
 // hides it (and reclaims the space) when the message is empty.
-func (v *mainView) setStatus(text string) {
+func (v *Planner) SetStatus(text string) {
 	if text == "" {
 		v.statusLabel.SetText("")
 		v.statusLabel.Hide()
@@ -176,11 +176,11 @@ func (v *mainView) setStatus(text string) {
 	}
 }
 
-// buildRight creates the resource form and the result table.
-func (v *mainView) buildRight() fyne.CanvasObject {
+// buildRight creates the currency form and the result table.
+func (v *Planner) buildRight() fyne.CanvasObject {
 	v.formCard = widget.NewCard("", "", nil)
 
-	v.keepSelect = widget.NewSelect(nil, nil)
+	v.keepCurrencySelect = widget.NewSelect(nil, nil)
 
 	v.rangeSlider = NewRangeSlider(1, 1)
 	v.rangeSlider.Step = 1
@@ -208,17 +208,17 @@ func (v *mainView) buildRight() fyne.CanvasObject {
 }
 
 // applyFilter filters both sections by name or id and keeps the selection in sync.
-func (v *mainView) applyFilter(text string) {
+func (v *Planner) applyFilter(text string) {
 	query := strings.ToLower(strings.TrimSpace(text))
 
-	v.remoteFiltered = filterContainers(v.remoteAll, query)
-	v.localFiltered = filterContainers(v.localAll, query)
+	v.remoteFiltered = filterBoxes(v.remoteAll, query)
+	v.localFiltered = filterBoxes(v.localAll, query)
 
 	// Re-resolve the current selection against the filtered lists.
-	keep := (*model.Container)(nil)
+	keep := (*blindbox.BlindBox)(nil)
 	keepID := ""
 	if v.selected != nil {
-		if c, ok := v.containerFor(v.selectedNodeID); ok {
+		if c, ok := v.boxFor(v.selectedNodeID); ok {
 			keep = c
 			keepID = v.selectedNodeID
 		}
@@ -240,44 +240,44 @@ func (v *mainView) applyFilter(text string) {
 	v.applySelection()
 }
 
-// filterContainers returns the containers matching the query by name or id.
-func filterContainers(containers []model.Container, query string) []model.Container {
+// filterBoxes returns the boxes matching the query by name or id.
+func filterBoxes(boxes []blindbox.BlindBox, query string) []blindbox.BlindBox {
 	if query == "" {
-		return append([]model.Container(nil), containers...)
+		return append([]blindbox.BlindBox(nil), boxes...)
 	}
 
-	filtered := make([]model.Container, 0, len(containers))
-	for _, c := range containers {
-		if strings.Contains(strings.ToLower(c.Manifest.Name), query) ||
-			strings.Contains(strings.ToLower(c.Manifest.ID), query) {
-			filtered = append(filtered, c)
+	filtered := make([]blindbox.BlindBox, 0, len(boxes))
+	for _, box := range boxes {
+		if strings.Contains(strings.ToLower(box.Manifest.Name), query) ||
+			strings.Contains(strings.ToLower(box.Manifest.ID), query) {
+			filtered = append(filtered, box)
 		}
 	}
 	return filtered
 }
 
 // sectionLeafIDs returns the tree leaf node ids of a section ("remote"/"local").
-func (v *mainView) sectionLeafIDs(section string) []widget.TreeNodeID {
+func (v *Planner) sectionLeafIDs(section string) []widget.TreeNodeID {
 	list := v.remoteFiltered
 	if section == "local" {
 		list = v.localFiltered
 	}
 
 	ids := make([]widget.TreeNodeID, len(list))
-	for i, c := range list {
-		ids[i] = widget.TreeNodeID(section + ":" + c.Manifest.ID)
+	for i, box := range list {
+		ids[i] = widget.TreeNodeID(section + ":" + box.Manifest.ID)
 	}
 	return ids
 }
 
-// containerFor resolves a tree leaf node id to its container.
-func (v *mainView) containerFor(nodeID string) (*model.Container, bool) {
+// boxFor resolves a tree leaf node id to its blind box.
+func (v *Planner) boxFor(nodeID string) (*blindbox.BlindBox, bool) {
 	section, id, ok := strings.Cut(nodeID, ":")
 	if !ok {
 		return nil, false
 	}
 
-	var list []model.Container
+	var list []blindbox.BlindBox
 	switch section {
 	case "remote":
 		list = v.remoteFiltered
@@ -295,44 +295,27 @@ func (v *mainView) containerFor(nodeID string) (*model.Container, bool) {
 	return nil, false
 }
 
-// refresh reloads local and remote data so newly added blind boxes show up.
-func (v *mainView) refresh() {
-	var status string
-
-	if local, err := model.LoadDataDefault(); err != nil {
-		status = fmt.Sprintf("本地加载失败：%v", err)
-	} else {
-		v.localAll = local
-	}
-
-	v.setStatus(status)
+// SetLocalBoxes 用新的本地盲盒替换列表内容并重新过滤。
+func (v *Planner) SetLocalBoxes(boxes []blindbox.BlindBox) {
+	v.localAll = boxes
 	v.applyFilter(v.searchEntry.Text)
-	v.startRemoteLoad()
 }
 
-// startRemoteLoad begins fetching the remote section in the background.
-func (v *mainView) startRemoteLoad() {
-	v.remoteLoading = true
+// SetRemoteBoxes 用新的远程盲盒替换列表内容并重新过滤。
+func (v *Planner) SetRemoteBoxes(boxes []blindbox.BlindBox) {
+	v.remoteAll = boxes
+	v.applyFilter(v.searchEntry.Text)
+}
+
+// SetRemoteLoading 标记远程数据是否正在加载，供列表分支显示。
+func (v *Planner) SetRemoteLoading(loading bool) {
+	v.remoteLoading = loading
 	v.tree.Refresh()
-
-	go func() {
-		containers, err := LoadRemoteContainers(remoteBaseURL)
-
-		fyne.Do(func() {
-			v.remoteLoading = false
-			if err != nil {
-				v.setStatus(fmt.Sprintf("远程加载失败：%v", err))
-				return
-			}
-			v.remoteAll = containers
-			v.applyFilter(v.searchEntry.Text)
-		})
-	}()
 }
 
-// selectContainer stores the chosen blind box and rebuilds the right panel.
-func (v *mainView) selectContainer(nodeID widget.TreeNodeID) {
-	c, ok := v.containerFor(nodeID)
+// selectBox stores the chosen blind box and rebuilds the right panel.
+func (v *Planner) selectBox(nodeID widget.TreeNodeID) {
+	c, ok := v.boxFor(nodeID)
 	if !ok {
 		return
 	}
@@ -342,18 +325,18 @@ func (v *mainView) selectContainer(nodeID widget.TreeNodeID) {
 }
 
 // applySelection rebuilds the right panel to match the current selection.
-func (v *mainView) applySelection() {
+func (v *Planner) applySelection() {
 	v.plan = nil
-	v.fail = false
-	v.failDraw = 0
+	v.insufficient = false
+	v.insufficientDraw = 0
 	v.currencyEntries = nil
 	v.rebuildResultTable()
 
 	if v.selected == nil {
-		v.formCard.SetTitle("资源规划")
+		v.formCard.SetTitle("货币规划")
 		v.formCard.SetSubTitle("请选择一个盲盒")
 		v.formCard.SetContent(container.NewCenter(widget.NewLabel("从左侧列表选择一个盲盒开始规划")))
-		v.keepSelect.Disable()
+		v.keepCurrencySelect.Disable()
 		v.rangeSlider.Disable()
 		v.calculateBtn.Disable()
 		v.summaryLabel.SetText("")
@@ -362,7 +345,7 @@ func (v *mainView) applySelection() {
 
 	c := v.selected
 	v.formCard.SetTitle(c.Manifest.Name)
-	v.formCard.SetSubTitle(fmt.Sprintf("共 %d 抽 · %d 种资源", c.Manifest.Draws, len(c.Currencies)))
+	v.formCard.SetSubTitle(fmt.Sprintf("共 %d 抽 · %d 种货币", c.Manifest.Draws, len(c.Currencies)))
 
 	// Currency quantity inputs.
 	form := widget.NewForm()
@@ -377,9 +360,9 @@ func (v *mainView) applySelection() {
 		v.currencyEntries = append(v.currencyEntries, entry)
 	}
 
-	currencyTitle := widget.NewLabelWithStyle("资源数量", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	currencyTitle := widget.NewLabelWithStyle("货币数量", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	rangeTitle := widget.NewLabelWithStyle("抽数范围", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	keepTitle := widget.NewLabelWithStyle("优先保留的资源", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	keepTitle := widget.NewLabelWithStyle("优先保留的货币", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	// Draw range slider.
 	draws := c.Manifest.Draws
@@ -402,12 +385,12 @@ func (v *mainView) applySelection() {
 	for _, currency := range c.Currencies {
 		names = append(names, currency.Name)
 	}
-	v.keepSelect.SetOptions(names)
-	v.keepSelect.SetSelectedIndex(0)
-	v.keepSelect.Enable()
+	v.keepCurrencySelect.SetOptions(names)
+	v.keepCurrencySelect.SetSelectedIndex(0)
+	v.keepCurrencySelect.Enable()
 
 	v.calculateBtn.Enable()
-	v.summaryLabel.SetText("填写资源数量后点击「计算方案」")
+	v.summaryLabel.SetText("填写货币数量后点击「计算方案」")
 
 	content := container.NewVBox(
 		currencyTitle,
@@ -416,14 +399,14 @@ func (v *mainView) applySelection() {
 		v.rangeSlider,
 		v.rangeLabel,
 		keepTitle,
-		v.keepSelect,
+		v.keepCurrencySelect,
 		v.calculateBtn,
 	)
 	v.formCard.SetContent(content)
 }
 
 // calculate parses inputs, runs the plan and updates the table.
-func (v *mainView) calculate() {
+func (v *Planner) calculate() {
 	if v.selected == nil {
 		return
 	}
@@ -451,18 +434,18 @@ func (v *mainView) calculate() {
 		end = start
 	}
 
-	result := calculatePlan(*v.selected, start, end, balances, v.preferKeepID())
+	result := blindbox.CalculatePlan(*v.selected, start, end, balances, v.preferredCurrencyID())
 
 	v.plan = result.Steps
-	v.fail = result.Insufficient
-	v.failDraw = result.FailAtDraw
+	v.insufficient = result.Insufficient
+	v.insufficientDraw = result.FailAtDraw
 	v.rebuildResultTable()
 	v.updateSummary(result)
 }
 
-// preferKeepID resolves the selected "keep more" currency id.
-func (v *mainView) preferKeepID() string {
-	idx := v.keepSelect.SelectedIndex()
+// preferredCurrencyID resolves the selected "keep more" currency id.
+func (v *Planner) preferredCurrencyID() string {
+	idx := v.keepCurrencySelect.SelectedIndex()
 	if idx <= 0 { // "无" (or no selection) means no preference
 		return ""
 	}
@@ -474,14 +457,14 @@ func (v *mainView) preferKeepID() string {
 }
 
 // updateSummary renders final balances and any insufficiency notice.
-func (v *mainView) updateSummary(result planResult) {
+func (v *Planner) updateSummary(result blindbox.PlanResult) {
 	parts := make([]string, 0, len(result.Final))
-	for _, id := range sortedCurrencyIDs(*v.selected) {
-		parts = append(parts, fmt.Sprintf("%s %d", currencyName(*v.selected, id), result.Final[id]))
+	for _, id := range blindbox.SortedCurrencyIDs(*v.selected) {
+		parts = append(parts, fmt.Sprintf("%s %d", blindbox.CurrencyName(*v.selected, id), result.Final[id]))
 	}
-	summary := "剩余资源：" + strings.Join(parts, "，")
+	summary := "剩余货币：" + strings.Join(parts, "，")
 	if result.Insufficient {
-		summary = fmt.Sprintf("第 %d 抽资源不足，无法继续｜", result.FailAtDraw) + summary
+		summary = fmt.Sprintf("第 %d 抽货币不足，无法继续｜", result.FailAtDraw) + summary
 	}
 	v.summaryLabel.SetText(summary)
 }
@@ -490,11 +473,11 @@ func (v *mainView) updateSummary(result planResult) {
 // height. Unlike a widget.Table (which scrolls internally and collapses to a
 // single visible row in a small window), this grid lets the outer scroll reveal
 // every row at once.
-func (v *mainView) rebuildResultTable() {
+func (v *Planner) rebuildResultTable() {
 	rows := []fyne.CanvasObject{
 		container.NewGridWithColumns(4,
 			resultCell("抽数", true),
-			resultCell("使用资源", true),
+			resultCell("使用货币", true),
 			resultCell("花费", true),
 			resultCell("剩余", true),
 		),
@@ -510,10 +493,10 @@ func (v *mainView) rebuildResultTable() {
 		))
 	}
 
-	if v.fail {
+	if v.insufficient {
 		rows = append(rows, container.NewGridWithColumns(4,
-			resultCell(strconv.Itoa(v.failDraw), false),
-			resultCell("资源不足", false),
+			resultCell(strconv.Itoa(v.insufficientDraw), false),
+			resultCell("货币不足", false),
 			resultCell("—", false),
 			resultCell("—", false),
 		))
@@ -555,9 +538,9 @@ func newBlindBoxItem() fyne.CanvasObject {
 	return item
 }
 
-func (b *blindBoxItem) set(c model.Container) {
-	b.title = c.Manifest.Name
-	b.subtitle = fmt.Sprintf("%d 抽 · %d 种资源", c.Manifest.Draws, len(c.Currencies))
+func (b *blindBoxItem) set(box blindbox.BlindBox) {
+	b.title = box.Manifest.Name
+	b.subtitle = fmt.Sprintf("%d 抽 · %d 种货币", box.Manifest.Draws, len(box.Currencies))
 	b.Refresh()
 }
 
