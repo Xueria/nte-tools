@@ -48,11 +48,11 @@ type InferQuery struct {
 	MaxTotal int
 }
 
-// CellItems 取出单格（1x1）物品，供推测使用。
-func CellItems(grids []Grid) []Item {
-	for _, grid := range grids {
-		if grid.Length == 1 && grid.Width == 1 {
-			return grid.Items
+// CellItems 取出单格（1x1）物品，供推测使用；普通拍品清单不算单格。
+func CellItems(listings []Listing) []Item {
+	for _, listing := range listings {
+		if listing.Footprint.Cell() {
+			return listing.Items
 		}
 	}
 

@@ -16,8 +16,8 @@ const (
 	DataRootEnv = "BLIND_TOOLS_DATA"
 	// LocalDirectory 数据根目录名，相对可执行文件或当前工作目录。
 	LocalDirectory = "data"
-	// GridDirectory 竞拍占格数据在数据根下的子目录名。
-	GridDirectory = "bid"
+	// BidDirectory 竞拍清单数据在数据根下的子目录名。
+	BidDirectory = "bid"
 	// DefaultRemoteBaseURL 远程数据目录：必须是 raw.githubusercontent.com
 	// 路径，且结构与本地数据目录一致。
 	DefaultRemoteBaseURL = "https://raw.githubusercontent.com/Xueria/blind-tools/refs/heads/master/data"
@@ -48,9 +48,9 @@ func (s *Store) RemoteBoxes() ([]blindbox.BlindBox, error) {
 	return blindbox.LoadRemoteBoxes(s.remoteBase)
 }
 
-// BidGrids 读取本地竞拍占格数据。
-func (s *Store) BidGrids() ([]bid.Grid, error) {
-	return bid.LoadGrids(filepath.Join(s.localRoot, GridDirectory))
+// BidListings 读取本地竞拍清单数据。
+func (s *Store) BidListings() ([]bid.Listing, error) {
+	return bid.LoadListings(filepath.Join(s.localRoot, BidDirectory))
 }
 
 // resolveLocalRoot 定位数据根目录：显式环境变量优先，其次可执行文件同级，

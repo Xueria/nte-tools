@@ -35,13 +35,14 @@ const (
 	cardQualityTextSize float32 = 11
 )
 
-// Items 是「拍品清单」页：左侧按占格类型筛选，右侧画出该类型的占格并列出拍品卡片。
+// Items 是「拍品清单」页：左侧列出所有清单，右侧按清单的呈现方式渲染
+// 预览并列出拍品卡片。
 type Items struct {
 	root fyne.CanvasObject
 
-	grids []bid.Grid
+	listings []bid.Listing
 
-	typeList     *widget.List
+	listingList  *widget.List
 	statusLabel  *widget.Label
 	previewLabel *widget.Label
 	previewBox   *fyne.Container
@@ -61,12 +62,12 @@ func (v *Items) NewTab() Tab {
 	return Tab{Title: "拍品清单", Icon: theme.ListIcon(), Content: v.root}
 }
 
-// SetBidGrids 用新的竞拍占格数据替换页面内容，并默认选中第一个类型。
-func (v *Items) SetBidGrids(grids []bid.Grid) {
-	v.grids = grids
-	v.typeList.Refresh()
+// SetBidListings 用新的竞拍清单数据替换页面内容，并默认选中第一份清单。
+func (v *Items) SetBidListings(listings []bid.Listing) {
+	v.listings = listings
+	v.listingList.Refresh()
 
-	if len(grids) == 0 {
+	if len(listings) == 0 {
 		v.previewLabel.SetText("暂无竞拍数据")
 		v.previewBox.Objects = nil
 		v.previewBox.Refresh()
@@ -75,8 +76,8 @@ func (v *Items) SetBidGrids(grids []bid.Grid) {
 	}
 
 	// 先清空选中态再选中，保证 OnSelected 一定触发。
-	v.typeList.UnselectAll()
-	v.typeList.Select(0)
+	v.listingList.UnselectAll()
+	v.listingList.Select(0)
 }
 
 // SetStatus 显示加载状态；传空字符串即隐藏。
@@ -90,24 +91,25 @@ func (v *Items) SetStatus(text string) {
 	}
 }
 
-// build 组装左侧类型选择器与右侧占格预览、拍品卡片。
+// build 组装左侧清单选择器与右侧清单预览、拍品卡片。
 func (v *Items) build() fyne.CanvasObject {
-	v.typeList = widget.NewList(
-		func() int { return len(v.grids) },
+	v.listingList = widget.NewList(
+		func() int { return len(v.listings) },
 		func() fyne.CanvasObject { return widget.NewLabel("") },
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			obj.(*widget.Label).SetText(gridTypeLabel(v.grids[id]))
+			listing := v.listings[id]
+			obj.(*widget.Label).SetText(listingViewFor(listing).RowLabel(listing))
 		},
 	)
-	v.typeList.OnSelected = func(id widget.ListItemID) { v.selectGrid(int(id)) }
+	v.listingList.OnSelected = func(id widget.ListItemID) { v.selectListing(int(id)) }
 
 	v.statusLabel = widget.NewLabel("")
 	v.statusLabel.Wrapping = fyne.TextWrapWord
 	v.statusLabel.Hide()
 
-	typeHeader := widget.NewLabelWithStyle("占格类型", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	header := container.NewVBox(typeHeader, widget.NewSeparator())
-	left := container.NewBorder(header, v.statusLabel, nil, nil, v.typeList)
+	listHeader := widget.NewLabelWithStyle("清单", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	header := container.NewVBox(listHeader, widget.NewSeparator())
+	left := container.NewBorder(header, v.statusLabel, nil, nil, v.listingList)
 
 	v.previewLabel = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	v.previewBox = container.NewVBox()
@@ -131,21 +133,22 @@ func (v *Items) build() fyne.CanvasObject {
 	return split
 }
 
-// selectGrid 渲染第 index 个占格类型。
-func (v *Items) selectGrid(index int) {
-	if index < 0 || index >= len(v.grids) {
+// selectListing 渲染第 index 份清单：预览与卡片都交给该类清单的呈现方式决定。
+func (v *Items) selectListing(index int) {
+	if index < 0 || index >= len(v.listings) {
 		return
 	}
 
-	grid := v.grids[index]
+	listing := v.listings[index]
+	presentation := listingViewFor(listing)
 
-	v.previewLabel.SetText(fmt.Sprintf("%dx%d 占格 · %d 件拍品", grid.Length, grid.Width, len(grid.Items)))
-	v.previewBox.Objects = []fyne.CanvasObject{footprint(grid.Length, grid.Width)}
+	v.previewLabel.SetText(presentation.Header(listing))
+	v.previewBox.Objects = previewObjects(presentation.Preview(listing))
 	v.previewBox.Refresh()
 
-	cards := make([]fyne.CanvasObject, 0, len(grid.Items))
+	cards := make([]fyne.CanvasObject, 0, len(listing.Items))
 
-	for _, item := range grid.Items {
+	for _, item := range listing.Items {
 		card := newItemCard()
 		card.set(item)
 		cards = append(cards, card)
@@ -153,9 +156,18 @@ func (v *Items) selectGrid(index int) {
 
 	v.cardWall.setCards(cards)
 
-	// 换类型时回到顶部。
+	// 换清单时回到顶部。
 	v.cardScroll.Offset = fyne.NewPos(0, 0)
 	v.cardScroll.Refresh()
+}
+
+// previewObjects 把可选的预览内容包成预览区的内容；没有预览时预览区为空。
+func previewObjects(preview fyne.CanvasObject) []fyne.CanvasObject {
+	if preview == nil {
+		return nil
+	}
+
+	return []fyne.CanvasObject{preview}
 }
 
 // scrollBarInset 返回浮动滚动条的宽度加一点余量：Fyne 的滚动条画在内容
@@ -445,7 +457,81 @@ func (r *itemCardRenderer) fitName(width float32) {
 	r.name.Text = fitText(r.card.item.Name, width, cardNameTextSize, fyne.TextStyle{})
 }
 
-// gridTypeLabel 生成类型选择器里的一行：占格尺寸与拍品数。
-func gridTypeLabel(grid bid.Grid) string {
-	return fmt.Sprintf("%dx%d（%d 件）", grid.Length, grid.Width, len(grid.Items))
+// listingView 描述一类拍品清单在页面上的呈现方式：选择器里的一行文字、
+// 预览区标题与预览内容。新增清单类型时只要实现它并注册进 listingViews，
+// 页面自身不必知道有哪些类型。
+type listingView interface {
+	// Matches 判断该呈现方式是否适用于这份清单。
+	Matches(listing bid.Listing) bool
+	// RowLabel 是左侧清单选择器里的一行文字。
+	RowLabel(listing bid.Listing) string
+	// Header 是预览区上方的说明。
+	Header(listing bid.Listing) string
+	// Preview 是说明下方的预览内容；没有预览时返回 nil。
+	Preview(listing bid.Listing) fyne.CanvasObject
+}
+
+// listingViews 是所有已注册的呈现方式，按顺序取第一个匹配的；兜底方式放最后。
+var listingViews = []listingView{
+	gridListingView{},
+	plainListingView{},
+}
+
+// listingViewFor 返回一份清单对应的呈现方式。
+func listingViewFor(listing bid.Listing) listingView {
+	for _, presentation := range listingViews {
+		if presentation.Matches(listing) {
+			return presentation
+		}
+	}
+
+	return plainListingView{}
+}
+
+// gridListingView 呈现带占格形状的清单：预览区画出 length×width 的格子。
+type gridListingView struct{}
+
+// Matches 判断清单是否带占格形状。
+func (gridListingView) Matches(listing bid.Listing) bool {
+	return listing.Footprint.Grid
+}
+
+// RowLabel 生成选择器里的一行：清单名、占格尺寸与拍品数。
+func (gridListingView) RowLabel(listing bid.Listing) string {
+	return fmt.Sprintf("%s · %dx%d（%d 件）",
+		listing.Name, listing.Footprint.Length, listing.Footprint.Width, len(listing.Items))
+}
+
+// Header 生成预览区标题。
+func (gridListingView) Header(listing bid.Listing) string {
+	return fmt.Sprintf("%s · %dx%d 占格 · %d 件拍品",
+		listing.Name, listing.Footprint.Length, listing.Footprint.Width, len(listing.Items))
+}
+
+// Preview 画出占格形状。
+func (gridListingView) Preview(listing bid.Listing) fyne.CanvasObject {
+	return footprint(listing.Footprint.Length, listing.Footprint.Width)
+}
+
+// plainListingView 呈现没有占格信息的普通拍品清单：不画格子，只列卡片。
+type plainListingView struct{}
+
+// Matches 永远成立：它同时是兜底方式，因此必须注册在 listingViews 末尾。
+func (plainListingView) Matches(bid.Listing) bool {
+	return true
+}
+
+// RowLabel 生成选择器里的一行：清单名与拍品数。
+func (plainListingView) RowLabel(listing bid.Listing) string {
+	return fmt.Sprintf("%s（%d 件）", listing.Name, len(listing.Items))
+}
+
+// Header 生成预览区标题。
+func (plainListingView) Header(listing bid.Listing) string {
+	return fmt.Sprintf("%s · 普通拍品 · %d 件", listing.Name, len(listing.Items))
+}
+
+// Preview 返回 nil：普通拍品清单没有占格可画。
+func (plainListingView) Preview(bid.Listing) fyne.CanvasObject {
+	return nil
 }

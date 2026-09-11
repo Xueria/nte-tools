@@ -66,7 +66,7 @@ func setupMainWindowAndRun() {
 		loadLocalBoxes(data, planner)
 		loadRemoteBoxes(data, planner)
 
-		cells = loadBidGrids(data, items)
+		cells = loadBidListings(data, items)
 		bidPage.SetCellItems(cells)
 	}
 	planner.OnRefresh = reload
@@ -124,16 +124,16 @@ func loadRemoteBoxes(data *store.Store, planner *view.Planner) {
 	}()
 }
 
-// loadBidGrids 读取本地竞拍占格数据：推给拍品清单页，并返回其中的单格物品。
-func loadBidGrids(data *store.Store, items *view.Items) []bid.Item {
-	grids, err := data.BidGrids()
+// loadBidListings 读取本地竞拍清单数据：推给拍品清单页，并返回其中的单格物品。
+func loadBidListings(data *store.Store, items *view.Items) []bid.Item {
+	listings, err := data.BidListings()
 	if err != nil {
 		items.SetStatus(fmt.Sprintf("竞拍数据加载失败：%v", err))
 		return nil
 	}
 
 	items.SetStatus("")
-	items.SetBidGrids(grids)
+	items.SetBidListings(listings)
 
-	return bid.CellItems(grids)
+	return bid.CellItems(listings)
 }

@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-// ParseGridName 从占格数据文件名解析长宽（<length>x<width>.json）。
-// ok 为 false 表示文件名不符合约定。
-func ParseGridName(name string) (length, width int, ok bool) {
-	lengthText, widthText, found := strings.Cut(strings.TrimSuffix(name, GridFileSuffix), "x")
+// ParseSizeFromName 从清单文件名解析占格长宽（<length>x<width>.json）。
+// ok 为 false 表示文件名没有带长宽，该清单按普通拍品处理。
+func ParseSizeFromName(name string) (length, width int, ok bool) {
+	lengthText, widthText, found := strings.Cut(strings.TrimSuffix(name, ListingFileSuffix), "x")
 
 	if !found {
 		return 0, 0, false
@@ -30,31 +30,31 @@ func ParseGridName(name string) (length, width int, ok bool) {
 	return length, width, true
 }
 
-// ValidateGrid 校验一份占格数据：长宽为正、与文件名一致，且每个物品字段完整。
-func ValidateGrid(grid Grid, length, width int) error {
-	if length < 1 || width < 1 {
-		return fmt.Errorf("占格尺寸必须为正：%dx%d", length, width)
+// ValidateListing 校验一份清单：名称非空、占格时长宽为正，且每件拍品字段完整。
+func ValidateListing(listing Listing) error {
+	if strings.TrimSpace(listing.Name) == "" {
+		return fmt.Errorf("清单缺少名称")
 	}
 
-	if grid.Length != length || grid.Width != width {
-		return fmt.Errorf("文件名是 %dx%d，数据里是 %dx%d", length, width, grid.Length, grid.Width)
+	if listing.Grid && (listing.Length < 1 || listing.Width < 1) {
+		return fmt.Errorf("占格尺寸必须为正：%dx%d", listing.Length, listing.Width)
 	}
 
-	if len(grid.Items) == 0 {
-		return fmt.Errorf("占格 %dx%d 没有任何物品", length, width)
+	if len(listing.Items) == 0 {
+		return fmt.Errorf("清单 %s 没有任何拍品", listing.Name)
 	}
 
-	for i, item := range grid.Items {
+	for i, item := range listing.Items {
 		if strings.TrimSpace(item.Name) == "" {
-			return fmt.Errorf("第 %d 个物品缺少名称", i+1)
+			return fmt.Errorf("第 %d 件拍品缺少名称", i+1)
 		}
 
 		if strings.TrimSpace(item.Quality) == "" {
-			return fmt.Errorf("物品 %s 缺少品质", item.Name)
+			return fmt.Errorf("拍品 %s 缺少品质", item.Name)
 		}
 
 		if item.Value < 0 {
-			return fmt.Errorf("物品 %s 的价格为负数：%d", item.Name, item.Value)
+			return fmt.Errorf("拍品 %s 的价格为负数：%d", item.Name, item.Value)
 		}
 	}
 
