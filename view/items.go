@@ -1,7 +1,6 @@
 package view
 
 import (
-	"fmt"
 	"image/color"
 
 	"blind-tools/model/bid"
@@ -97,8 +96,7 @@ func (v *Items) build() fyne.CanvasObject {
 		func() int { return len(v.listings) },
 		func() fyne.CanvasObject { return widget.NewLabel("") },
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			listing := v.listings[id]
-			obj.(*widget.Label).SetText(listingViewFor(listing).RowLabel(listing))
+			obj.(*widget.Label).SetText(v.listings[id].Name)
 		},
 	)
 	v.listingList.OnSelected = func(id widget.ListItemID) { v.selectListing(int(id)) }
@@ -133,17 +131,17 @@ func (v *Items) build() fyne.CanvasObject {
 	return split
 }
 
-// selectListing 渲染第 index 份清单：预览与卡片都交给该类清单的呈现方式决定。
+// selectListing 渲染第 index 份清单：标题取清单自己的名称，预览内容交给
+// 该类清单的预览方式决定。
 func (v *Items) selectListing(index int) {
 	if index < 0 || index >= len(v.listings) {
 		return
 	}
 
 	listing := v.listings[index]
-	presentation := listingViewFor(listing)
 
-	v.previewLabel.SetText(presentation.Header(listing))
-	v.previewBox.Objects = previewObjects(presentation.Preview(listing))
+	v.previewLabel.SetText(listing.Name)
+	v.previewBox.Objects = previewObjects(listingPreviewFor(listing).Preview(listing))
 	v.previewBox.Refresh()
 
 	cards := make([]fyne.CanvasObject, 0, len(listing.Items))
@@ -457,85 +455,55 @@ func (r *itemCardRenderer) fitName(width float32) {
 	r.name.Text = fitText(r.card.item.Name, width, cardNameTextSize, fyne.TextStyle{})
 }
 
-// listingView 描述一类拍品清单在页面上的呈现方式：选择器里的一行文字、
-// 预览区标题与预览内容。新增清单类型时只要实现它并注册进 listingViews，
-// 页面自身不必知道有哪些类型。
-type listingView interface {
-	// Matches 判断该呈现方式是否适用于这份清单。
+// listingPreview 描述一类拍品清单在预览区的呈现方式。清单标题一律直接用清单
+// 自己的名称，所以这里只决定预览内容；新增清单类型时实现它并注册进
+// listingPreviews 即可，页面自身不必知道有哪些类型。
+type listingPreview interface {
+	// Matches 判断该预览方式是否适用于这份清单。
 	Matches(listing bid.Listing) bool
-	// RowLabel 是左侧清单选择器里的一行文字。
-	RowLabel(listing bid.Listing) string
-	// Header 是预览区上方的说明。
-	Header(listing bid.Listing) string
-	// Preview 是说明下方的预览内容；没有预览时返回 nil。
+	// Preview 是清单的预览内容；没有预览时返回 nil。
 	Preview(listing bid.Listing) fyne.CanvasObject
 }
 
-// listingViews 是所有已注册的呈现方式，按顺序取第一个匹配的；兜底方式放最后。
-var listingViews = []listingView{
-	gridListingView{},
-	plainListingView{},
+// listingPreviews 是所有已注册的预览方式，按顺序取第一个匹配的；兜底方式放最后。
+var listingPreviews = []listingPreview{
+	gridListingPreview{},
+	plainListingPreview{},
 }
 
-// listingViewFor 返回一份清单对应的呈现方式。
-func listingViewFor(listing bid.Listing) listingView {
-	for _, presentation := range listingViews {
-		if presentation.Matches(listing) {
-			return presentation
+// listingPreviewFor 返回一份清单对应的预览方式。
+func listingPreviewFor(listing bid.Listing) listingPreview {
+	for _, preview := range listingPreviews {
+		if preview.Matches(listing) {
+			return preview
 		}
 	}
 
-	return plainListingView{}
+	return plainListingPreview{}
 }
 
-// gridListingView 呈现带占格形状的清单：预览区画出 length×width 的格子。
-type gridListingView struct{}
+// gridListingPreview 呈现带占格属性的清单：预览区画出 length×width 的格子。
+type gridListingPreview struct{}
 
 // Matches 判断清单是否带占格属性。
-func (gridListingView) Matches(listing bid.Listing) bool {
+func (gridListingPreview) Matches(listing bid.Listing) bool {
 	return listing.Attribute.Grid
 }
 
-// RowLabel 生成选择器里的一行：清单名、占格尺寸与拍品数。
-func (gridListingView) RowLabel(listing bid.Listing) string {
-	attribute := listing.Attribute
-
-	return fmt.Sprintf("%s · %dx%d（%d 件）",
-		listing.Name, attribute.Length, attribute.Width, len(listing.Items))
-}
-
-// Header 生成预览区标题。
-func (gridListingView) Header(listing bid.Listing) string {
-	attribute := listing.Attribute
-
-	return fmt.Sprintf("%s · %dx%d 占格 · %d 件",
-		listing.Name, attribute.Length, attribute.Width, len(listing.Items))
-}
-
 // Preview 画出占格形状。
-func (gridListingView) Preview(listing bid.Listing) fyne.CanvasObject {
+func (gridListingPreview) Preview(listing bid.Listing) fyne.CanvasObject {
 	return footprint(listing.Attribute.Length, listing.Attribute.Width)
 }
 
-// plainListingView 呈现没有占格信息的普通拍品清单：不画格子，只列卡片。
-type plainListingView struct{}
+// plainListingPreview 呈现没有占格属性的普通拍品清单：不画格子。
+type plainListingPreview struct{}
 
-// Matches 永远成立：它同时是兜底方式，因此必须注册在 listingViews 末尾。
-func (plainListingView) Matches(bid.Listing) bool {
+// Matches 永远成立：它同时是兜底方式，因此必须注册在 listingPreviews 末尾。
+func (plainListingPreview) Matches(bid.Listing) bool {
 	return true
 }
 
-// RowLabel 生成选择器里的一行：清单名、类型与拍品数。
-func (plainListingView) RowLabel(listing bid.Listing) string {
-	return fmt.Sprintf("%s · 普通（%d 件）", listing.Name, len(listing.Items))
-}
-
-// Header 生成预览区标题。
-func (plainListingView) Header(listing bid.Listing) string {
-	return fmt.Sprintf("%s · 普通拍品 · %d 件", listing.Name, len(listing.Items))
-}
-
 // Preview 返回 nil：普通拍品清单没有占格可画。
-func (plainListingView) Preview(bid.Listing) fyne.CanvasObject {
+func (plainListingPreview) Preview(bid.Listing) fyne.CanvasObject {
 	return nil
 }
