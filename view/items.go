@@ -508,7 +508,7 @@ func (gridListingView) RowLabel(listing bid.Listing) string {
 func (gridListingView) Header(listing bid.Listing) string {
 	attribute := listing.Attribute
 
-	return fmt.Sprintf("%s · %dx%d 占格 · %d 件拍品",
+	return fmt.Sprintf("%s · %dx%d 占格 · %d 件",
 		listing.Name, attribute.Length, attribute.Width, len(listing.Items))
 }
 
@@ -525,9 +525,9 @@ func (plainListingView) Matches(bid.Listing) bool {
 	return true
 }
 
-// RowLabel 生成选择器里的一行：清单名与拍品数。
+// RowLabel 生成选择器里的一行：清单名、类型与拍品数。
 func (plainListingView) RowLabel(listing bid.Listing) string {
-	return fmt.Sprintf("%s（%d 件）", listing.Name, len(listing.Items))
+	return fmt.Sprintf("%s · 普通（%d 件）", listing.Name, len(listing.Items))
 }
 
 // Header 生成预览区标题。

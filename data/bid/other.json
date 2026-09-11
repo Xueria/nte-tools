@@ -1,0 +1,45 @@
+{
+  "name": "其他杂项",
+  "items": [
+    {
+      "name": "生锈的钥匙",
+      "quality": "gray",
+      "value": 120
+    },
+    {
+      "name": "旧军用水壶",
+      "quality": "green",
+      "value": 850
+    },
+    {
+      "name": "破损的罗盘",
+      "quality": "blue",
+      "value": 2400
+    },
+    {
+      "name": "密封的信件",
+      "quality": "purple",
+      "value": 6800
+    },
+    {
+      "name": "银质怀表",
+      "quality": "purple",
+      "value": 12500
+    },
+    {
+      "name": "陨铁碎片",
+      "quality": "orange",
+      "value": 46000
+    },
+    {
+      "name": "黑曜石雕像",
+      "quality": "orange",
+      "value": 88000
+    },
+    {
+      "name": "未鉴定的宝石",
+      "quality": "red",
+      "value": 200000
+    }
+  ]
+}
