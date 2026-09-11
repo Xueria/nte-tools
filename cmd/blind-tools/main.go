@@ -53,11 +53,10 @@ func setupMainWindowAndRun() {
 	bidPage := view.NewBid()
 	items := view.NewItems()
 
-	// cells 是全部单格（1x1）物品，作为推测的候选池，随数据刷新一起更新。
-	var cells []bid.Item
-
-	// required 与 query 记住上一次推测的条件，用于按需展开某个价位的组合。
+	// pool、required 与 query 记住上一次推测用的候选池与条件，
+	// 用于按需展开某个件数的组合。
 	var (
+		pool     []bid.Item
 		required []bid.Item
 		query    bid.InferQuery
 	)
@@ -66,19 +65,18 @@ func setupMainWindowAndRun() {
 		loadLocalBoxes(data, planner)
 		loadRemoteBoxes(data, planner)
 
-		cells = loadBidListings(data, items)
-		bidPage.SetCellItems(cells)
+		loadBidListings(data, items, bidPage)
 	}
 	planner.OnRefresh = reload
 
 	// 推测先算出「确实有组合」的件数档位；具体组合等用户选中某个件数时再枚举。
-	bidPage.OnInfer = func(req []bid.Item, q bid.InferQuery) {
-		required, query = req, q
-		bidPage.SetCounts(bid.InferCounts(cells, req, q))
+	bidPage.OnInfer = func(items, req []bid.Item, q bid.InferQuery) {
+		pool, required, query = items, req, q
+		bidPage.SetCounts(bid.InferCounts(pool, req, q))
 	}
 
 	bidPage.OnSelectCount = func(count int) {
-		bidPage.SetCompositions(bid.InferCount(cells, required, query, count))
+		bidPage.SetCompositions(bid.InferCount(pool, required, query, count))
 	}
 
 	window.SetContent(view.NewShell(
@@ -124,16 +122,15 @@ func loadRemoteBoxes(data *store.Store, planner *view.Planner) {
 	}()
 }
 
-// loadBidListings 读取本地竞拍清单数据：推给拍品清单页，并返回其中的单格物品。
-func loadBidListings(data *store.Store, items *view.Items) []bid.Item {
+// loadBidListings 读取本地竞拍清单数据：推给拍品清单页与拍品推测页。
+func loadBidListings(data *store.Store, items *view.Items, bidPage *view.Bid) {
 	listings, err := data.BidListings()
 	if err != nil {
 		items.SetStatus(fmt.Sprintf("竞拍数据加载失败：%v", err))
-		return nil
+		return
 	}
 
 	items.SetStatus("")
 	items.SetBidListings(listings)
-
-	return bid.CellItems(listings)
+	bidPage.SetListings(listings)
 }

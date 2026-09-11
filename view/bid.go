@@ -33,20 +33,30 @@ const (
 	priorityQuality = "red"
 	// availablePanelRatio 左栏上下的初始占比：上面是可选择物品，下面是已选择。
 	availablePanelRatio = 0.65
+	// priceModeAverage、priceModeTotal 是价格方式单选的选项文字。
+	priceModeAverage = "均价"
+	priceModeTotal   = "总价"
 )
 
-// Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价、数量区间与
-// 总价上限；先用一条横向标签列出有组合的件数，选中某个件数后再看它的组合。
+// Bid 是「拍品推测」页：先选一份拍品清单作为候选池，勾选已确认在组合里的拍品，
+// 再填均价或总价与数量区间；先用一条横向标签列出有组合的件数，选中某个件数后
+// 再看它的组合。
 type Bid struct {
 	root fyne.CanvasObject
 
+	// 清单与候选池
+	listingSelect *widget.Select
+	listings      []bid.Listing
+
 	// 输入
+	modeRadio     *widget.RadioGroup
 	avgEntry      *widget.Entry
+	totalEntry    *widget.Entry
 	maxTotalEntry *widget.Entry
 	countSlider   *RangeSlider
 	countLabel    *widget.Label
 
-	// 已确认物品：上面是可选物品标签，下面是已选择标签
+	// 已确认拍品：上面是候选池标签，下面是已选择标签
 	searchEntry  *widget.Entry
 	chipFlow     *chipFlow
 	selectedFlow *chipFlow
@@ -73,13 +83,14 @@ type Bid struct {
 	statusLabel *widget.Label
 	headerLabel *widget.Label
 
-	// OnInfer 由装配层赋值：用户点「推测」时触发，页面本身不做推测。
-	OnInfer func(required []bid.Item, query bid.InferQuery)
+	// OnInfer 由装配层赋值：用户点「推测」时触发，页面本身不做推测，
+	// 触发时把当前候选池与已确认拍品一并交给装配层。
+	OnInfer func(pool, required []bid.Item, query bid.InferQuery)
 	// OnSelectCount 由装配层赋值：用户选中某个件数时触发，用于取该件数的组合。
 	OnSelectCount func(count int)
 }
 
-// NewBid 构建单格推测页。
+// NewBid 构建拍品推测页。
 func NewBid() *Bid {
 	v := &Bid{selectedTab: -1}
 	v.root = v.build()
@@ -88,11 +99,44 @@ func NewBid() *Bid {
 
 // NewTab 返回该页的页签标题、图标与内容。
 func (v *Bid) NewTab() Tab {
-	return Tab{Title: "单格推测", Icon: theme.SearchIcon(), Content: v.root}
+	return Tab{Title: "拍品推测", Icon: theme.SearchIcon(), Content: v.root}
 }
 
-// SetCellItems 用可参与推测的单格物品重建标签区，默认没有已确认物品。
-func (v *Bid) SetCellItems(items []bid.Item) {
+// SetListings 用新的拍品清单数据重建清单选择器，并默认选中第一份清单，
+// 候选池随之换成该清单的全部拍品。
+func (v *Bid) SetListings(listings []bid.Listing) {
+	v.listings = listings
+
+	names := make([]string, 0, len(listings))
+
+	for _, listing := range listings {
+		names = append(names, listing.Name)
+	}
+
+	v.listingSelect.SetOptions(names)
+
+	if len(names) == 0 {
+		v.listingSelect.ClearSelected()
+		v.setPool(nil)
+		return
+	}
+
+	v.listingSelect.SetSelectedIndex(0)
+}
+
+// selectListing 把候选池换成选中的那份清单的拍品：换清单后原来的勾选没有意义，
+// 因此整池重建。
+func (v *Bid) selectListing(name string) {
+	for _, listing := range v.listings {
+		if listing.Name == name {
+			v.setPool(listing.Items)
+			return
+		}
+	}
+}
+
+// setPool 用新的候选拍品重建标签区，默认没有已确认拍品。
+func (v *Bid) setPool(items []bid.Item) {
 	v.items = items
 	v.confirmed = make([]int, len(items))
 	v.chips = make([]*chip, 0, len(items))
@@ -101,9 +145,25 @@ func (v *Bid) SetCellItems(items []bid.Item) {
 		v.chips = append(v.chips, newChip(v))
 	}
 
+	v.resetResults()
 	v.configureCountSlider()
 	v.applyFilter(v.searchEntry.Text)
 	v.refreshSelection()
+}
+
+// resetResults 清空上一次推测的件数档位与组合，换候选池后必须重新推测。
+func (v *Bid) resetResults() {
+	v.inferred = false
+	v.requiredCount = 0
+	v.counts = nil
+	v.countTabs = nil
+	v.selectedTab = -1
+	v.countBar.Objects = nil
+	v.countBar.Refresh()
+
+	v.results = nil
+	v.compositionLabel.SetText("")
+	v.resultList.Refresh()
 }
 
 // SetCounts 展示新的件数档位，并默认选中最小的那个。
@@ -162,11 +222,22 @@ func (v *Bid) SetStatus(text string) {
 func (v *Bid) build() fyne.CanvasObject {
 	left := v.buildFilter()
 
+	v.listingSelect = widget.NewSelect(nil, v.selectListing)
+
 	v.avgEntry = newCountEntry("例如 5000")
+	v.totalEntry = newCountEntry("例如 50000")
 	v.maxTotalEntry = newCountEntry("默认 10000000")
 
+	v.modeRadio = widget.NewRadioGroup([]string{priceModeAverage, priceModeTotal}, v.applyPriceMode)
+	v.modeRadio.Horizontal = true
+	v.modeRadio.Required = true
+	v.modeRadio.SetSelected(priceModeAverage)
+
 	form := widget.NewForm(
-		widget.NewFormItem("单格均价", v.avgEntry),
+		widget.NewFormItem("清单", v.listingSelect),
+		widget.NewFormItem("价格方式", v.modeRadio),
+		widget.NewFormItem("均价", v.avgEntry),
+		widget.NewFormItem("总价", v.totalEntry),
 		widget.NewFormItem("总价上限", v.maxTotalEntry),
 	)
 
@@ -237,18 +308,33 @@ func (v *Bid) build() fyne.CanvasObject {
 	return split
 }
 
-// buildFilter 构建左侧的已确认物品筛选栏。
+// applyPriceMode 按价格方式启用对应的输入框：均价模式填均价与总价上限，
+// 总价模式只填总价。
+func (v *Bid) applyPriceMode(mode string) {
+	if mode == priceModeTotal {
+		v.avgEntry.Disable()
+		v.maxTotalEntry.Disable()
+		v.totalEntry.Enable()
+		return
+	}
+
+	v.avgEntry.Enable()
+	v.maxTotalEntry.Enable()
+	v.totalEntry.Disable()
+}
+
+// buildFilter 构建左侧的已确认拍品筛选栏。
 func (v *Bid) buildFilter() fyne.CanvasObject {
-	header := widget.NewLabelWithStyle("已确认在里面的物品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	header := widget.NewLabelWithStyle("已确认在里面的拍品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	v.searchEntry = widget.NewEntry()
-	v.searchEntry.SetPlaceHolder("搜索物品…")
+	v.searchEntry.SetPlaceHolder("搜索拍品…")
 	v.searchEntry.OnChanged = v.applyFilter
 
 	controls := container.NewBorder(nil, nil, nil,
 		widget.NewButton("清空勾选", v.clearSelection), v.searchEntry)
 
-	hint := widget.NewLabel("点一下物品加一件，右键减一件")
+	hint := widget.NewLabel("点一下拍品加一件，右键减一件")
 	hint.Importance = widget.LowImportance
 	hint.Wrapping = fyne.TextWrapWord
 
@@ -259,7 +345,7 @@ func (v *Bid) buildFilter() fyne.CanvasObject {
 		flowScroll(v.chipFlow),
 	)
 
-	selectedTitle := widget.NewLabelWithStyle("已选择的物品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	selectedTitle := widget.NewLabelWithStyle("已选择的拍品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	v.selectedFlow = newChipFlow()
 	selected := container.NewBorder(
@@ -479,9 +565,9 @@ func (v *Bid) requiredItems() []bid.Item {
 	return items
 }
 
-// updateHeader 刷新摘要：可用物品数与本次推测的件数档位。
+// updateHeader 刷新摘要：候选池与本次推测的件数档位。
 func (v *Bid) updateHeader() {
-	parts := []string{fmt.Sprintf("单格（1x1）物品 %d 件", len(v.items))}
+	parts := []string{fmt.Sprintf("%s：%d 件拍品", v.listingName(), len(v.items))}
 
 	switch {
 	case !v.inferred:
@@ -502,13 +588,65 @@ func (v *Bid) updateHeader() {
 	v.headerLabel.SetText(strings.Join(parts, " · "))
 }
 
+// listingName 返回当前候选池所属的清单名。
+func (v *Bid) listingName() string {
+	if v.listingSelect.Selected == "" {
+		return "未选择清单"
+	}
+
+	return v.listingSelect.Selected
+}
+
 // infer 校验输入，并把推测请求交给装配层。
 func (v *Bid) infer() {
+	query, ok := v.inferQuery()
+
+	if !ok {
+		return
+	}
+
+	required := v.requiredItems()
+
+	if len(required) > query.MaxCount {
+		v.SetStatus(fmt.Sprintf("已确认 %d 件，超过数量上限 %d，请调整数量区间或取消勾选",
+			len(required), query.MaxCount))
+		return
+	}
+
+	v.inferred = true
+	v.requiredCount = len(required)
+	v.SetStatus("")
+
+	if v.OnInfer != nil {
+		v.OnInfer(v.items, required, query)
+	}
+}
+
+// inferQuery 读取输入并组装推测条件；输入不合法时给出提示并返回 false。
+func (v *Bid) inferQuery() (bid.InferQuery, bool) {
+	minCount, maxCount := v.countRange()
+
+	if v.modeRadio.Selected == priceModeTotal {
+		total, ok := parseCount(v.totalEntry.Text)
+
+		if !ok {
+			v.SetStatus("请输入组合总价（非负整数）")
+			return bid.InferQuery{}, false
+		}
+
+		return bid.InferQuery{
+			Mode:     bid.TotalMode,
+			Price:    total,
+			MinCount: minCount,
+			MaxCount: maxCount,
+		}, true
+	}
+
 	avg, ok := parseCount(v.avgEntry.Text)
 
 	if !ok {
-		v.SetStatus("请输入单格均价（非负整数）")
-		return
+		v.SetStatus("请输入均价（非负整数）")
+		return bid.InferQuery{}, false
 	}
 
 	maxTotal := defaultMaxTotal
@@ -518,12 +656,23 @@ func (v *Bid) infer() {
 
 		if !ok {
 			v.SetStatus("总价上限要填非负整数")
-			return
+			return bid.InferQuery{}, false
 		}
 	}
 
-	minCount := int(v.countSlider.Lower)
-	maxCount := int(v.countSlider.Upper)
+	return bid.InferQuery{
+		Mode:     bid.AverageMode,
+		Price:    avg,
+		MinCount: minCount,
+		MaxCount: maxCount,
+		MaxTotal: maxTotal,
+	}, true
+}
+
+// countRange 返回数量区间滑块给出的件数范围。
+func (v *Bid) countRange() (minCount, maxCount int) {
+	minCount = int(v.countSlider.Lower)
+	maxCount = int(v.countSlider.Upper)
 
 	if minCount < minItemCount {
 		minCount = minItemCount
@@ -533,26 +682,7 @@ func (v *Bid) infer() {
 		maxCount = minCount
 	}
 
-	required := v.requiredItems()
-
-	if len(required) > maxCount {
-		v.SetStatus(fmt.Sprintf("已确认 %d 件，超过数量上限 %d，请调整数量区间或取消勾选",
-			len(required), maxCount))
-		return
-	}
-
-	v.inferred = true
-	v.requiredCount = len(required)
-	v.SetStatus("")
-
-	if v.OnInfer != nil {
-		v.OnInfer(required, bid.InferQuery{
-			Avg:      avg,
-			MinCount: minCount,
-			MaxCount: maxCount,
-			MaxTotal: maxTotal,
-		})
-	}
+	return minCount, maxCount
 }
 
 // newCountEntry 生成一个只接受非负整数的输入框。

@@ -37,31 +37,32 @@ type InferResult struct {
 	Truncated bool
 }
 
+// PriceMode 用户给的价格是均价还是总价。
+type PriceMode int
+
+const (
+	// AverageMode 按均价推测：组合的单件均价与填写值相差小于 1。
+	AverageMode PriceMode = iota
+	// TotalMode 按总价推测：组合总价正好等于填写值。
+	TotalMode
+)
+
 // InferQuery 一次推测的条件。
 type InferQuery struct {
-	// Avg 是玩家看到的单格均价（整数）。
-	Avg int
+	// Mode 与 Price 是价格条件：均价模式下 Price 是单件均价，
+	// 总价模式下 Price 是组合总价。
+	Mode  PriceMode
+	Price int
 	// MinCount、MaxCount 是组合总件数的区间。
 	MinCount int
 	MaxCount int
-	// MaxTotal 是组合总价的上限，0 表示不限制。
+	// MaxTotal 是组合总价的上限，0 表示不限制；总价模式下总价已由 Price 定死。
 	MaxTotal int
 }
 
-// CellItems 取出单格（1x1）物品，供推测使用；普通拍品清单不算单格。
-func CellItems(listings []Listing) []Item {
-	for _, listing := range listings {
-		if listing.Attribute.Cell() {
-			return listing.Items
-		}
-	}
-
-	return nil
-}
-
-// InferCounts 返回确实存在组合的件数档位。件数 n 的总价必然落在均价窗口内，因此
-// 逐个件数做一次「只找一个解」的探测，没有解（或超过总价上限）的件数不会返回，
-// 免得列出点了没内容的档位。
+// InferCounts 返回确实存在组合的件数档位。件数 n 的总价必然落在价格条件给出的
+// 窗口内，因此逐个件数做一次「只找一个解」的探测，没有解（或超过总价上限）的
+// 件数不会返回，免得列出点了没内容的档位。
 func InferCounts(items, required []Item, query InferQuery) []int {
 	if len(items) == 0 || query.MinCount < 1 || query.MaxCount < query.MinCount ||
 		len(required) > query.MaxCount {
@@ -245,19 +246,27 @@ func (s *searchState) collect(start, remainingCount, remainingSum int) {
 
 // countWindow 返回件数 count 可能的总价区间（已按已确认总价与上限裁剪）。
 func countWindow(count, base int, query InferQuery) (low, high int) {
-	low = windowLow(count, query.Avg)
+	low, high = priceWindow(count, query)
 
 	if low < base {
 		low = base
 	}
-
-	high = windowHigh(count, query.Avg)
 
 	if query.MaxTotal > 0 && high > query.MaxTotal {
 		high = query.MaxTotal
 	}
 
 	return low, high
+}
+
+// priceWindow 返回件数 count 对应的总价闭区间：均价模式下按「均价相差小于 1」
+// 换算，总价模式下就是填写的那个总价。
+func priceWindow(count int, query InferQuery) (low, high int) {
+	if query.Mode == TotalMode {
+		return query.Price, query.Price
+	}
+
+	return windowLow(count, query.Price), windowHigh(count, query.Price)
 }
 
 // windowLow、windowHigh 是「均价与 avg 相差小于 1」对应的总价闭区间。

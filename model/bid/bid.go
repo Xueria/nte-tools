@@ -39,11 +39,6 @@ func (a Attribute) Normalize() Attribute {
 	return GridAttribute(sizeOrOne(a.Length), sizeOrOne(a.Width))
 }
 
-// Cell 判断属性是不是单格（1x1）：普通拍品虽然长宽也是 1，但不算占格单格。
-func (a Attribute) Cell() bool {
-	return a.Grid && a.Length == 1 && a.Width == 1
-}
-
 // sizeOrOne 把缺省（非正）的格数按 1 处理。
 func sizeOrOne(size int) int {
 	if size < 1 {
