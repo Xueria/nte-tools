@@ -61,8 +61,8 @@ func (c *chip) Tapped(*fyne.PointEvent) {
 	}
 }
 
-// SecondaryTapped 右键点击即减少一件。
-func (c *chip) SecondaryTapped(*fyne.PointEvent) {
+// TappedSecondary 右键（或长按）点击即减少一件。
+func (c *chip) TappedSecondary(*fyne.PointEvent) {
 	if c.page != nil {
 		c.page.removeItem(c.index)
 	}
