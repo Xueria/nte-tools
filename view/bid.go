@@ -31,6 +31,8 @@ const (
 	defaultMaxTotal = 10_000_000
 	// priorityQuality 关注的品质：含它的组合在结果里标星。
 	priorityQuality = "red"
+	// maxSummaryItems 已确认清单里最多列出几种物品，避免说明文字过长。
+	maxSummaryItems = 4
 )
 
 // Bid 是「单格推测」页：勾选已确认在组合里的单格物品，输入单格均价、数量区间与
@@ -49,7 +51,7 @@ type Bid struct {
 	selectionLabel *widget.Label
 	chipFlow       *chipFlow
 	items          []bid.Item
-	selected       []bool
+	confirmed      []int
 	chips          []*chip
 
 	// 件数档位
@@ -92,7 +94,7 @@ func (v *Bid) NewTab() Tab {
 // SetCellItems 用可参与推测的单格物品重建标签区，默认没有已确认物品。
 func (v *Bid) SetCellItems(items []bid.Item) {
 	v.items = items
-	v.selected = make([]bool, len(items))
+	v.confirmed = make([]int, len(items))
 	v.chips = make([]*chip, 0, len(items))
 
 	for range items {
@@ -255,7 +257,11 @@ func (v *Bid) buildFilter() fyne.CanvasObject {
 	content := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), v.chipFlow)
 	scroll := container.NewVScroll(content)
 
-	top := container.NewVBox(header, v.selectionLabel, controls, widget.NewSeparator())
+	hint := widget.NewLabel("左键点一下加入一件，右键减少一件；同一物品可以加多件")
+	hint.Importance = widget.LowImportance
+	hint.Wrapping = fyne.TextWrapWord
+
+	top := container.NewVBox(header, hint, v.selectionLabel, controls, widget.NewSeparator())
 
 	return container.NewBorder(top, nil, nil, nil, scroll)
 }
@@ -347,7 +353,7 @@ func (v *Bid) applyFilter(query string) {
 			continue
 		}
 
-		v.chips[i].set(i, item, v.selected[i])
+		v.chips[i].set(i, item, v.confirmed[i])
 		chips = append(chips, v.chips[i])
 	}
 
@@ -367,56 +373,91 @@ func matchesItem(item bid.Item, key string) bool {
 	return false
 }
 
-// toggle 切换某个标签的勾选状态。
-func (v *Bid) toggle(index int) {
-	if index < 0 || index >= len(v.selected) {
+// addItem 给某个物品加一件（同一物品可以加多件）。
+func (v *Bid) addItem(index int) {
+	if index < 0 || index >= len(v.confirmed) {
 		return
 	}
 
-	v.selected[index] = !v.selected[index]
-	v.chips[index].set(index, v.items[index], v.selected[index])
+	v.confirmed[index]++
+	v.chips[index].set(index, v.items[index], v.confirmed[index])
 
 	v.updateSelectionLabel()
+	v.chipFlow.Refresh()
+}
+
+// removeItem 给某个物品减一件。
+func (v *Bid) removeItem(index int) {
+	if index < 0 || index >= len(v.confirmed) || v.confirmed[index] == 0 {
+		return
+	}
+
+	v.confirmed[index]--
+	v.chips[index].set(index, v.items[index], v.confirmed[index])
+
+	v.updateSelectionLabel()
+	v.chipFlow.Refresh()
 }
 
 // clearSelection 取消所有已确认物品。
 func (v *Bid) clearSelection() {
-	for i := range v.selected {
-		if !v.selected[i] {
+	for i := range v.confirmed {
+		if v.confirmed[i] == 0 {
 			continue
 		}
 
-		v.selected[i] = false
-		v.chips[i].set(i, v.items[i], false)
+		v.confirmed[i] = 0
+		v.chips[i].set(i, v.items[i], 0)
 	}
 
 	v.updateSelectionLabel()
+	v.chipFlow.Refresh()
 }
 
 // updateSelectionLabel 刷新已确认物品的说明。
 func (v *Bid) updateSelectionLabel() {
-	confirmed := 0
+	total := 0
+	parts := make([]string, 0, maxSummaryItems)
 
-	for _, checked := range v.selected {
-		if checked {
-			confirmed++
+	for i, item := range v.items {
+		if v.confirmed[i] == 0 {
+			continue
 		}
+
+		total += v.confirmed[i]
+
+		if len(parts) >= maxSummaryItems {
+			continue
+		}
+
+		if v.confirmed[i] > 1 {
+			parts = append(parts, fmt.Sprintf("%s×%d", item.Name, v.confirmed[i]))
+			continue
+		}
+
+		parts = append(parts, item.Name)
 	}
 
-	if confirmed == 0 {
+	if total == 0 {
 		v.selectionLabel.SetText(fmt.Sprintf("未勾选＝不限定，将从全部 %d 件里推测", len(v.items)))
 		return
 	}
 
-	v.selectionLabel.SetText(fmt.Sprintf("已确认 %d 件在里面，其余位置由算法补足", confirmed))
+	summary := strings.Join(parts, "、")
+
+	if len(parts) >= maxSummaryItems {
+		summary += " …"
+	}
+
+	v.selectionLabel.SetText(fmt.Sprintf("已确认 %d 件：%s", total, summary))
 }
 
-// requiredItems 返回已确认在组合里的物品。
+// requiredItems 返回已确认在组合里的物品，按件数展开（同一物品可能出现多次）。
 func (v *Bid) requiredItems() []bid.Item {
-	items := make([]bid.Item, 0, len(v.items))
+	items := make([]bid.Item, 0)
 
 	for i, item := range v.items {
-		if v.selected[i] {
+		for n := 0; n < v.confirmed[i]; n++ {
 			items = append(items, item)
 		}
 	}

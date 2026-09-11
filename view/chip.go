@@ -1,6 +1,7 @@
 package view
 
 import (
+	"fmt"
 	"image/color"
 
 	"blind-tools/model/bid"
@@ -26,14 +27,15 @@ const (
 	chipMinWidth float32 = 40
 )
 
-// chip 是一个可切换的物品标签：圆角矩形 + 品质色点 + 名称，点一下即切换勾选。
+// chip 是一个可增减的物品标签：左键点一下加入一件，右键减少一件。同一物品可以
+// 加多件（标签上显示 ×N），加过的标签高亮。
 type chip struct {
 	widget.BaseWidget
 
-	page    *Bid
-	index   int
-	item    bid.Item
-	checked bool
+	page  *Bid
+	index int
+	item  bid.Item
+	count int
 }
 
 // newChip 构建一个空标签，内容由 set 填充。
@@ -44,31 +46,38 @@ func newChip(page *Bid) *chip {
 	return item
 }
 
-// set 设置标签对应的物品与勾选状态。
-func (c *chip) set(index int, item bid.Item, checked bool) {
+// set 设置标签对应的物品与已确认件数。
+func (c *chip) set(index int, item bid.Item, count int) {
 	c.index = index
 	c.item = item
-	c.checked = checked
+	c.count = count
 	c.Refresh()
 }
 
-// Tapped 点击标签即切换勾选。
+// Tapped 左键点击即加入一件。
 func (c *chip) Tapped(*fyne.PointEvent) {
 	if c.page != nil {
-		c.page.toggle(c.index)
+		c.page.addItem(c.index)
 	}
 }
 
-// MinSize 返回标签尺寸：宽度随名称长度变化，一行能放多少就放多少。
+// SecondaryTapped 右键点击即减少一件。
+func (c *chip) SecondaryTapped(*fyne.PointEvent) {
+	if c.page != nil {
+		c.page.removeItem(c.index)
+	}
+}
+
+// MinSize 返回标签尺寸：宽度随文字（带 ×N 时更宽）变化，一行能放多少就放多少。
 func (c *chip) MinSize() fyne.Size {
 	c.ExtendBaseWidget(c)
 
-	return fyne.NewSize(c.nameWidth()+chipPadding*2+chipDotSize+chipDotGap, chipHeight)
+	return fyne.NewSize(c.labelWidth()+chipPadding*2+chipDotSize+chipDotGap, chipHeight)
 }
 
-// nameWidth 返回名称需要的宽度。
-func (c *chip) nameWidth() float32 {
-	return fyne.MeasureText(c.item.Name, chipTextSize, fyne.TextStyle{}).Width
+// labelWidth 返回标签文字需要的宽度。
+func (c *chip) labelWidth() float32 {
+	return fyne.MeasureText(chipTitle(c.item.Name, c.count), chipTextSize, fyne.TextStyle{}).Width
 }
 
 // CreateRenderer 创建标签的绘制对象。
@@ -107,19 +116,19 @@ func (r *chipRenderer) Refresh() {
 	th := r.chip.Theme()
 	variant := fyne.CurrentApp().Settings().ThemeVariant()
 
-	if r.chip.checked {
+	if r.chip.count > 0 {
 		r.background.FillColor = th.Color(theme.ColorNamePrimary, variant)
 		r.background.StrokeColor = r.background.FillColor
 		r.name.Color = th.Color(theme.ColorNameForegroundOnPrimary, variant)
 	} else {
-		// 未选中的标签也要与背景分开：用 surfaceVariant 填充 + outline 描边。
+		// 未加过的标签也要与背景分开：用 surfaceVariant 填充 + outline 描边。
 		r.background.FillColor = th.Color(theme.ColorNameInputBackground, variant)
 		r.background.StrokeColor = th.Color(theme.ColorNameInputBorder, variant)
 		r.name.Color = th.Color(theme.ColorNameForeground, variant)
 	}
 
 	r.dot.FillColor = qualityColor(r.chip.item.Quality)
-	r.name.Text = r.chip.item.Name
+	r.name.Text = chipTitle(r.chip.item.Name, r.chip.count)
 
 	canvas.Refresh(r.chip)
 }
@@ -139,6 +148,15 @@ func (r *chipRenderer) Layout(size fyne.Size) {
 
 func (r *chipRenderer) MinSize() fyne.Size {
 	return r.chip.MinSize()
+}
+
+// chipTitle 标签文字：加过多件时带上件数。
+func chipTitle(name string, count int) string {
+	if count < 2 {
+		return name
+	}
+
+	return fmt.Sprintf("%s ×%d", name, count)
 }
 
 // chipFlow 把标签按内容宽度横向排列，一行放不下就换到下一行。
@@ -230,6 +248,12 @@ func (r *chipFlowRenderer) Layout(size fyne.Size) {
 
 func (r *chipFlowRenderer) Refresh() {
 	r.SetObjects(r.flow.chips)
+
+	// 标签宽度会随「×N」变化，尺寸已知时立刻重排一次。
+	if size := r.flow.Size(); size.Width > 0 {
+		r.Layout(size)
+	}
+
 	canvas.Refresh(r.flow)
 }
 
