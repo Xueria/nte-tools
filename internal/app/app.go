@@ -1,5 +1,5 @@
-// Package app 是装配层：登记应用元数据、建窗口，把页面与数据来源接起来。
-// 数据在后台读，读完回到界面线程再更新页面，所以切换数据来源不会卡住界面。
+// Package app 负责界面启动：建窗口、把页面与数据来源接起来。数据在后台读，
+// 读完回到界面线程再更新页面，所以切换数据来源不会卡住界面。
 package app
 
 import (
@@ -13,17 +13,12 @@ import (
 	"blind-tools/internal/ui/listing"
 	"blind-tools/internal/ui/planner"
 	"blind-tools/internal/ui/shell"
-	"blind-tools/res"
 
 	"fyne.io/fyne/v2"
 	fyneapp "fyne.io/fyne/v2/app"
 )
 
 const (
-	appID      = "dev.xueria.tools.blind"
-	appName    = "blind-tools"
-	appVersion = "0.2"
-
 	windowTitle  = "Blind Tools"
 	windowWidth  = 840
 	windowHeight = 640
@@ -32,10 +27,9 @@ const (
 	loadingText = "正在加载数据…"
 )
 
-// Run 装配界面与数据，然后进入事件循环。
-func Run() {
-	setMetadata()
-
+// Run 建窗口、装配页面与数据，然后进入事件循环。appID 与入口登记的应用元数据
+// 是同一个标识，用于命名应用的存储空间。
+func Run(appID string) {
 	application := fyneapp.NewWithID(appID)
 	window := application.NewWindow(windowTitle)
 
@@ -76,22 +70,6 @@ func Run() {
 	dataLoader.reload()
 
 	application.Run()
-}
-
-// setMetadata 登记应用标识、版本与图标，须在创建应用之前调用。
-func setMetadata() {
-	fyneapp.SetMetadata(fyne.AppMetadata{
-		ID:      appID,
-		Name:    appName,
-		Version: appVersion,
-		Build:   1,
-		Icon:    res.Icon,
-		Release: false,
-		Custom:  nil,
-		Migrations: map[string]bool{
-			"fyneDo": true,
-		},
-	})
 }
 
 // loader 按当前数据来源读数据，并只认最新一次的结果：切换来源够快时，
