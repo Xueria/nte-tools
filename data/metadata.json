@@ -1,0 +1,16 @@
+{
+  "bid": {
+    "list": [
+      "bid/1x1.json",
+      "bid/gold.json"
+    ]
+  },
+  "pool": {
+    "global": {
+      "resources": "pool/resources.json"
+    },
+    "list": [
+      "pool/tide.json"
+    ]
+  }
+}
