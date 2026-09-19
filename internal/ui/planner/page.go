@@ -37,7 +37,6 @@ type Page struct {
 	tree         *widget.Tree
 	searchEntry  *widget.Entry
 	sourceSelect *widget.Select
-	sourceLabel  *widget.Label
 	statusLabel  *widget.Label
 	leftPanel    *fyne.Container
 
@@ -110,9 +109,6 @@ func (page *Page) buildLeft() fyne.CanvasObject {
 
 	sourceTitle := widget.NewLabelWithStyle("数据来源", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	page.sourceSelect = widget.NewSelect(nil, page.sourceChanged)
-	page.sourceLabel = widget.NewLabel("")
-	page.sourceLabel.Importance = widget.LowImportance
-	page.sourceLabel.Wrapping = fyne.TextWrapWord
 
 	sourceRow := container.NewBorder(nil, nil, sourceTitle, nil, page.sourceSelect)
 
@@ -167,7 +163,7 @@ func (page *Page) buildLeft() fyne.CanvasObject {
 	page.statusLabel.Wrapping = fyne.TextWrapWord
 	page.statusLabel.Hide()
 
-	top := container.NewVBox(header, searchRow, sourceRow, page.sourceLabel)
+	top := container.NewVBox(header, searchRow, sourceRow)
 	page.leftPanel = container.NewBorder(top, page.statusLabel, nil, nil, page.tree)
 
 	return page.leftPanel
@@ -520,15 +516,6 @@ func resultCell(text string, bold bool) fyne.CanvasObject {
 func (page *Page) SetSourceOptions(options []string, selected string) {
 	page.sourceSelect.SetOptions(options)
 	page.sourceSelect.SetSelected(selected)
-}
-
-// SetSourceStatus 说明当前实际生效的数据来源。
-func (page *Page) SetSourceStatus(text string) {
-	page.sourceLabel.SetText(text)
-
-	if page.leftPanel != nil {
-		page.leftPanel.Refresh()
-	}
 }
 
 // sourceChanged 把数据来源的选择变化转给装配层。

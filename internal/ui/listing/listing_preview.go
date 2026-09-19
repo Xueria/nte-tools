@@ -47,11 +47,11 @@ func footprint(length, width int) fyne.CanvasObject {
 
 // previewCell 生成占格预览里的一个格子。
 func previewCell() fyne.CanvasObject {
-	settings := fyne.CurrentApp().Settings()
-	variant := settings.ThemeVariant()
+	appSettings := fyne.CurrentApp().Settings()
+	variant := appSettings.ThemeVariant()
 
-	cell := canvas.NewRectangle(settings.Theme().Color(theme.ColorNameInputBackground, variant))
-	cell.StrokeColor = settings.Theme().Color(theme.ColorNameInputBorder, variant)
+	cell := canvas.NewRectangle(appSettings.Theme().Color(theme.ColorNameInputBackground, variant))
+	cell.StrokeColor = appSettings.Theme().Color(theme.ColorNameInputBorder, variant)
 	cell.StrokeWidth = 1
 	cell.CornerRadius = 4
 	cell.SetMinSize(fyne.NewSize(previewCellSize, previewCellSize))
