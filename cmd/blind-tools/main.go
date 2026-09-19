@@ -63,7 +63,6 @@ func setupMainWindowAndRun() {
 
 	reload := func() {
 		loadLocalPools(data, planner)
-		loadRemotePools(data, planner)
 
 		loadBidListings(data, items, bidPage)
 	}
@@ -100,26 +99,6 @@ func loadLocalPools(data *store.Store, planner *view.Planner) {
 
 	planner.SetStatus("")
 	planner.SetLocalPools(pools)
-}
-
-// loadRemotePools 在后台读取远程盲盒池，完成后回到 UI 线程推给盲盒规划页。
-func loadRemotePools(data *store.Store, planner *view.Planner) {
-	planner.SetRemoteLoading(true)
-
-	go func() {
-		pools, err := data.RemotePools()
-
-		fyne.Do(func() {
-			planner.SetRemoteLoading(false)
-
-			if err != nil {
-				planner.SetStatus(fmt.Sprintf("远程加载失败：%v", err))
-				return
-			}
-
-			planner.SetRemotePools(pools)
-		})
-	}()
 }
 
 // loadBidListings 读取本地竞拍清单数据：推给拍品清单页与拍品推测页。

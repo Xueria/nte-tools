@@ -32,13 +32,10 @@ func (v *Planner) NewTab() Tab {
 type Planner struct {
 	root fyne.CanvasObject
 
-	remoteAll      []pool.Pool
 	localAll       []pool.Pool
-	remoteFiltered []pool.Pool
 	localFiltered  []pool.Pool
 	selected       *pool.Pool
 	selectedNodeID string
-	remoteLoading  bool
 
 	tree        *widget.Tree
 	searchEntry *widget.Entry
@@ -98,22 +95,19 @@ func (v *Planner) buildLeft() fyne.CanvasObject {
 
 	searchRow := container.NewBorder(nil, nil, nil, refreshBtn, v.searchEntry)
 
-	// The list is split into two sections: remote (GitHub folder) and local
-	// (the data folder).
+	// The list is grouped by data source; local is the on-disk data folder.
 	v.tree = widget.NewTree(
 		func(uid widget.TreeNodeID) []widget.TreeNodeID {
 			switch uid {
 			case "":
-				return []widget.TreeNodeID{"remote", "local"}
-			case "remote":
-				return v.sectionLeafIDs("remote")
+				return []widget.TreeNodeID{"local"}
 			case "local":
-				return v.sectionLeafIDs("local")
+				return v.leafIDs()
 			}
 			return nil
 		},
 		func(uid widget.TreeNodeID) bool {
-			return uid == "" || uid == "remote" || uid == "local"
+			return uid == "" || uid == "local"
 		},
 		func(branch bool) fyne.CanvasObject {
 			if branch {
@@ -123,17 +117,8 @@ func (v *Planner) buildLeft() fyne.CanvasObject {
 		},
 		func(uid widget.TreeNodeID, branch bool, obj fyne.CanvasObject) {
 			if branch {
-				label := obj.(*widget.Label)
-				switch uid {
-				case "remote":
-					switch {
-					case v.remoteLoading:
-						label.SetText("远程（加载中…）")
-					default:
-						label.SetText(fmt.Sprintf("远程（%d）", len(v.remoteFiltered)))
-					}
-				case "local":
-					label.SetText(fmt.Sprintf("本地（%d）", len(v.localFiltered)))
+				if uid == "local" {
+					obj.(*widget.Label).SetText(fmt.Sprintf("本地（%d）", len(v.localFiltered)))
 				}
 				return
 			}
@@ -144,7 +129,7 @@ func (v *Planner) buildLeft() fyne.CanvasObject {
 	)
 	v.tree.HideSeparators = true
 	v.tree.OnSelected = func(uid widget.TreeNodeID) {
-		if uid == "remote" || uid == "local" {
+		if uid == "local" {
 			v.tree.Unselect(uid)
 			return
 		}
@@ -207,11 +192,10 @@ func (v *Planner) buildRight() fyne.CanvasObject {
 	return container.NewVScroll(right)
 }
 
-// applyFilter filters both sections by name or id and keeps the selection in sync.
+// applyFilter filters the list by name or id and keeps the selection in sync.
 func (v *Planner) applyFilter(text string) {
 	query := strings.ToLower(strings.TrimSpace(text))
 
-	v.remoteFiltered = filterPools(v.remoteAll, query)
 	v.localFiltered = filterPools(v.localAll, query)
 
 	// Re-resolve the current selection against the filtered lists.
@@ -256,40 +240,20 @@ func filterPools(pools []pool.Pool, query string) []pool.Pool {
 	return filtered
 }
 
-// sectionLeafIDs returns the tree leaf node ids of a section ("remote"/"local").
-func (v *Planner) sectionLeafIDs(section string) []widget.TreeNodeID {
-	list := v.remoteFiltered
-	if section == "local" {
-		list = v.localFiltered
-	}
-
-	ids := make([]widget.TreeNodeID, len(list))
-	for i, p := range list {
-		ids[i] = widget.TreeNodeID(section + ":" + p.Manifest.ID)
+// leafIDs returns the tree leaf node ids of the current filter result.
+func (v *Planner) leafIDs() []widget.TreeNodeID {
+	ids := make([]widget.TreeNodeID, len(v.localFiltered))
+	for i, p := range v.localFiltered {
+		ids[i] = widget.TreeNodeID(p.Manifest.ID)
 	}
 	return ids
 }
 
 // poolFor resolves a tree leaf node id to its blind pool.
 func (v *Planner) poolFor(nodeID string) (*pool.Pool, bool) {
-	section, id, ok := strings.Cut(nodeID, ":")
-	if !ok {
-		return nil, false
-	}
-
-	var list []pool.Pool
-	switch section {
-	case "remote":
-		list = v.remoteFiltered
-	case "local":
-		list = v.localFiltered
-	default:
-		return nil, false
-	}
-
-	for i := range list {
-		if list[i].Manifest.ID == id {
-			return &list[i], true
+	for i := range v.localFiltered {
+		if v.localFiltered[i].Manifest.ID == nodeID {
+			return &v.localFiltered[i], true
 		}
 	}
 	return nil, false
@@ -299,18 +263,6 @@ func (v *Planner) poolFor(nodeID string) (*pool.Pool, bool) {
 func (v *Planner) SetLocalPools(pools []pool.Pool) {
 	v.localAll = pools
 	v.applyFilter(v.searchEntry.Text)
-}
-
-// SetRemotePools 用新的远程盲盒池替换列表内容并重新过滤。
-func (v *Planner) SetRemotePools(pools []pool.Pool) {
-	v.remoteAll = pools
-	v.applyFilter(v.searchEntry.Text)
-}
-
-// SetRemoteLoading 标记远程数据是否正在加载，供列表分支显示。
-func (v *Planner) SetRemoteLoading(loading bool) {
-	v.remoteLoading = loading
-	v.tree.Refresh()
 }
 
 // selectPool stores the chosen blind pool and rebuilds the right panel.

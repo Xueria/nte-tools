@@ -1,4 +1,4 @@
-// Package store 是数据访问层：确定数据从哪来（本地目录与远程仓库），
+// Package store 是数据访问层：确定本地数据根目录在哪，
 // 再把具体读取工作交给各业务域自己的加载器。
 // 数据始终是外部文件，不随程序打包。
 package store
@@ -16,34 +16,24 @@ const (
 	DataRootEnv = "BLIND_TOOLS_DATA"
 	// LocalDirectory 数据根目录名，相对可执行文件或当前工作目录。
 	LocalDirectory = "data"
-	// DefaultRemoteBaseURL 远程数据根目录：必须是 raw.githubusercontent.com
-	// 路径，且结构与本地数据根一致。
-	DefaultRemoteBaseURL = "https://raw.githubusercontent.com/Xueria/blind-tools/refs/heads/master/data"
 )
 
 // Store 数据访问层，持有已解析的数据来源。
 type Store struct {
-	localRoot  string
-	remoteBase string
+	localRoot string
 }
 
 // New 按默认策略构造数据访问层：数据根依次取环境变量、可执行文件同级的
-// data/、当前工作目录下的 data/；远程地址取 DefaultRemoteBaseURL。
+// data/、当前工作目录下的 data/。
 func New() *Store {
 	return &Store{
-		localRoot:  resolveLocalRoot(),
-		remoteBase: DefaultRemoteBaseURL,
+		localRoot: resolveLocalRoot(),
 	}
 }
 
 // LocalPools 读取本地盲盒池数据。
 func (s *Store) LocalPools() ([]pool.Pool, error) {
 	return pool.LoadLocalPools(s.localRoot)
-}
-
-// RemotePools 读取远程盲盒池数据。
-func (s *Store) RemotePools() ([]pool.Pool, error) {
-	return pool.LoadRemotePools(s.remoteBase)
 }
 
 // BidListings 读取本地竞拍清单数据。
