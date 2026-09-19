@@ -22,10 +22,12 @@ const (
 
 // Page 是「设置」页。
 type Page struct {
-	root fyne.CanvasObject
+	root    fyne.CanvasObject
+	content *fyne.Container
 
 	sourceSelect *widget.Select
 	sourceHint   *widget.Label
+	customRow    *fyne.Container
 	customEntry  *widget.Entry
 	customButton *widget.Button
 	statusLabel  *widget.Label
@@ -85,22 +87,22 @@ func (page *Page) build() fyne.CanvasObject {
 	}
 	page.customEntry.OnSubmitted = func(string) { page.loadCustom() }
 
-	page.customButton = widget.NewButton("用这个地址加载", page.loadCustom)
+	page.customButton = widget.NewButton("加载", page.loadCustom)
 	page.customButton.Importance = widget.MediumImportance
 
-	customRow := container.NewBorder(nil, nil, nil, page.customButton, page.customEntry)
+	page.customRow = container.NewBorder(nil, nil, nil, page.customButton, page.customEntry)
 
 	page.statusLabel = widget.NewLabel("")
 	page.statusLabel.Wrapping = fyne.TextWrapWord
 	page.statusLabel.Hide()
 
-	content := container.NewVBox(
+	page.content = container.NewVBox(
 		title,
 		widget.NewSeparator(),
 		sourceTitle,
 		page.sourceSelect,
 		page.sourceHint,
-		customRow,
+		page.customRow,
 		widget.NewSeparator(),
 		page.statusLabel,
 	)
@@ -108,7 +110,7 @@ func (page *Page) build() fyne.CanvasObject {
 	// 所有控件建好后才能恢复选择：选中会立刻回调 selectChanged。
 	page.restore()
 
-	return container.NewPadded(content)
+	return container.NewPadded(page.content)
 }
 
 // labels 返回下拉里的展示名。
@@ -185,15 +187,30 @@ func (page *Page) selectChanged(label string) {
 	}
 
 	page.choice.Kind = kind
+	page.updateCustomRow()
 
 	if kind == config.CustomKind && page.choice.CustomURL == "" {
-		page.sourceHint.SetText("自定义远程要先填地址，再点「用这个地址加载」。")
+		page.sourceHint.SetText("自定义远程要先填地址，再点「加载」。")
 		page.remember()
 
 		return
 	}
 
 	page.apply()
+}
+
+// updateCustomRow 只在选了自定义远程时才露出地址输入框。
+func (page *Page) updateCustomRow() {
+	if page.choice.Kind == config.CustomKind {
+		page.customRow.Show()
+	} else {
+		page.customRow.Hide()
+	}
+
+	// 藏起来后要请外层重新排版，否则会留着空档。
+	if page.content != nil {
+		page.content.Refresh()
+	}
 }
 
 // loadCustom 用输入框里的地址加载，并切到自定义远程。
