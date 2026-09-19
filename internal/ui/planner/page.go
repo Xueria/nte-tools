@@ -34,11 +34,10 @@ type Page struct {
 	selected       *pool.Pool
 	selectedNodeID string
 
-	tree         *widget.Tree
-	searchEntry  *widget.Entry
-	sourceSelect *widget.Select
-	statusLabel  *widget.Label
-	leftPanel    *fyne.Container
+	tree        *widget.Tree
+	searchEntry *widget.Entry
+	statusLabel *widget.Label
+	leftPanel   *fyne.Container
 
 	formCard           *widget.Card
 	resourceEntries    []*widget.Entry
@@ -56,8 +55,6 @@ type Page struct {
 
 	// OnRefresh 由装配层赋值：用户点「刷新」时触发，页面本身不关心刷新要做什么。
 	OnRefresh func()
-	// OnSourceChange 由装配层赋值：用户切换数据来源时触发，参数是选中的选项。
-	OnSourceChange func(option string)
 }
 
 // NewPage 构建盲盒规划页。
@@ -107,12 +104,7 @@ func (page *Page) buildLeft() fyne.CanvasObject {
 
 	searchRow := container.NewBorder(nil, nil, nil, refreshButton, page.searchEntry)
 
-	sourceTitle := widget.NewLabelWithStyle("数据来源", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	page.sourceSelect = widget.NewSelect(nil, page.sourceChanged)
-
-	sourceRow := container.NewBorder(nil, nil, sourceTitle, nil, page.sourceSelect)
-
-	// 列表按来源分组，目前只有一层：已加载的全部盲盒池。
+	// 列表目前只有一层分组节点：已加载的全部盲盒池。
 	page.tree = widget.NewTree(
 		func(uid widget.TreeNodeID) []widget.TreeNodeID {
 			switch uid {
@@ -163,7 +155,7 @@ func (page *Page) buildLeft() fyne.CanvasObject {
 	page.statusLabel.Wrapping = fyne.TextWrapWord
 	page.statusLabel.Hide()
 
-	top := container.NewVBox(header, searchRow, sourceRow)
+	top := container.NewVBox(header, searchRow)
 	page.leftPanel = container.NewBorder(top, page.statusLabel, nil, nil, page.tree)
 
 	return page.leftPanel
@@ -510,17 +502,4 @@ func (page *Page) rebuildResultTable() {
 // resultCell 生成结果表格里的一个居中单元格。
 func resultCell(text string, bold bool) fyne.CanvasObject {
 	return widget.NewLabelWithStyle(text, fyne.TextAlignCenter, fyne.TextStyle{Bold: bold})
-}
-
-// SetSourceOptions 设置数据来源的选项，并选中 selected。
-func (page *Page) SetSourceOptions(options []string, selected string) {
-	page.sourceSelect.SetOptions(options)
-	page.sourceSelect.SetSelected(selected)
-}
-
-// sourceChanged 把数据来源的选择变化转给装配层。
-func (page *Page) sourceChanged(option string) {
-	if page.OnSourceChange != nil {
-		page.OnSourceChange(option)
-	}
 }

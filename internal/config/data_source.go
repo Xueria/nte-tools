@@ -1,6 +1,6 @@
-// Package settings 保存运行期设置。目前只有一项：数据从远程还是本地读，
+// Package config 保存应用级设置。目前只有一项：数据从远程还是本地读，
 // 以及远程数据根在哪。
-package settings
+package config
 
 import "blind-tools/internal/data"
 
@@ -30,4 +30,13 @@ func OpenSource(source string) data.Source {
 	}
 
 	return data.Remote(RemoteBaseURL)
+}
+
+// SourceHint 返回某个数据来源是从哪儿读数据的，用于界面上说明这个设置。
+func SourceHint(source string) string {
+	if source == LocalSource {
+		return "从程序目录下的 data/ 读索引与数据，目录可用 " + data.RootEnv + " 环境变量指定。"
+	}
+
+	return "从 " + RemoteBaseURL + " 读索引与数据。"
 }
