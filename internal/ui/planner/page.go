@@ -21,23 +21,25 @@ import (
 const (
 	// plannerFilterRatio 盲盒列表在左右分栏中的初始占比，左栏只放列表，取窄一些。
 	plannerFilterRatio = 0.32
-	// localBranchID 本地数据在列表树里的分支节点标识。
-	localBranchID = "local"
+	// poolBranchID 盲盒池在列表树里的分支节点标识。
+	poolBranchID = "pools"
 )
 
 // Page 是「盲盒规划」页：左侧盲盒列表，右侧资源规划。
 type Page struct {
 	root fyne.CanvasObject
 
-	localAll       []pool.Pool
-	localFiltered  []pool.Pool
+	allPools       []pool.Pool
+	filteredPools  []pool.Pool
 	selected       *pool.Pool
 	selectedNodeID string
 
-	tree        *widget.Tree
-	searchEntry *widget.Entry
-	statusLabel *widget.Label
-	leftPanel   *fyne.Container
+	tree         *widget.Tree
+	searchEntry  *widget.Entry
+	sourceSelect *widget.Select
+	sourceLabel  *widget.Label
+	statusLabel  *widget.Label
+	leftPanel    *fyne.Container
 
 	formCard           *widget.Card
 	resourceEntries    []*widget.Entry
@@ -55,6 +57,8 @@ type Page struct {
 
 	// OnRefresh 由装配层赋值：用户点「刷新」时触发，页面本身不关心刷新要做什么。
 	OnRefresh func()
+	// OnSourceChange 由装配层赋值：用户切换数据来源时触发，参数是选中的选项。
+	OnSourceChange func(option string)
 }
 
 // NewPage 构建盲盒规划页。
@@ -104,20 +108,28 @@ func (page *Page) buildLeft() fyne.CanvasObject {
 
 	searchRow := container.NewBorder(nil, nil, nil, refreshButton, page.searchEntry)
 
-	// 列表按数据来源分组，目前只有随包分发的本地 data 目录。
+	sourceTitle := widget.NewLabelWithStyle("数据来源", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	page.sourceSelect = widget.NewSelect(nil, page.sourceChanged)
+	page.sourceLabel = widget.NewLabel("")
+	page.sourceLabel.Importance = widget.LowImportance
+	page.sourceLabel.Wrapping = fyne.TextWrapWord
+
+	sourceRow := container.NewBorder(nil, nil, sourceTitle, nil, page.sourceSelect)
+
+	// 列表按来源分组，目前只有一层：已加载的全部盲盒池。
 	page.tree = widget.NewTree(
 		func(uid widget.TreeNodeID) []widget.TreeNodeID {
 			switch uid {
 			case "":
-				return []widget.TreeNodeID{localBranchID}
-			case localBranchID:
+				return []widget.TreeNodeID{poolBranchID}
+			case poolBranchID:
 				return page.leafIDs()
 			}
 
 			return nil
 		},
 		func(uid widget.TreeNodeID) bool {
-			return uid == "" || uid == localBranchID
+			return uid == "" || uid == poolBranchID
 		},
 		func(branch bool) fyne.CanvasObject {
 			if branch {
@@ -128,8 +140,8 @@ func (page *Page) buildLeft() fyne.CanvasObject {
 		},
 		func(uid widget.TreeNodeID, branch bool, obj fyne.CanvasObject) {
 			if branch {
-				if uid == localBranchID {
-					obj.(*widget.Label).SetText(fmt.Sprintf("本地（%d）", len(page.localFiltered)))
+				if uid == poolBranchID {
+					obj.(*widget.Label).SetText(fmt.Sprintf("盲盒池（%d）", len(page.filteredPools)))
 				}
 
 				return
@@ -142,7 +154,7 @@ func (page *Page) buildLeft() fyne.CanvasObject {
 	)
 	page.tree.HideSeparators = true
 	page.tree.OnSelected = func(uid widget.TreeNodeID) {
-		if uid == localBranchID {
+		if uid == poolBranchID {
 			page.tree.Unselect(uid)
 			return
 		}
@@ -155,7 +167,7 @@ func (page *Page) buildLeft() fyne.CanvasObject {
 	page.statusLabel.Wrapping = fyne.TextWrapWord
 	page.statusLabel.Hide()
 
-	top := container.NewVBox(header, searchRow)
+	top := container.NewVBox(header, searchRow, sourceRow, page.sourceLabel)
 	page.leftPanel = container.NewBorder(top, page.statusLabel, nil, nil, page.tree)
 
 	return page.leftPanel
@@ -210,7 +222,7 @@ func (page *Page) buildRight() fyne.CanvasObject {
 func (page *Page) applyFilter(text string) {
 	query := strings.ToLower(strings.TrimSpace(text))
 
-	page.localFiltered = filterPools(page.localAll, query)
+	page.filteredPools = filterPools(page.allPools, query)
 
 	// 重新在当前过滤结果里确认选中项是否还在。
 	keep := (*pool.Pool)(nil)
@@ -262,9 +274,9 @@ func filterPools(pools []pool.Pool, query string) []pool.Pool {
 
 // leafIDs 返回当前过滤结果在列表树里的叶子节点标识。
 func (page *Page) leafIDs() []widget.TreeNodeID {
-	ids := make([]widget.TreeNodeID, len(page.localFiltered))
+	ids := make([]widget.TreeNodeID, len(page.filteredPools))
 
-	for i, blindPool := range page.localFiltered {
+	for i, blindPool := range page.filteredPools {
 		ids[i] = widget.TreeNodeID(blindPool.Manifest.ID)
 	}
 
@@ -273,9 +285,9 @@ func (page *Page) leafIDs() []widget.TreeNodeID {
 
 // poolFor 把列表树的叶子节点标识解析成盲盒池。
 func (page *Page) poolFor(nodeID string) (*pool.Pool, bool) {
-	for i := range page.localFiltered {
-		if page.localFiltered[i].Manifest.ID == nodeID {
-			return &page.localFiltered[i], true
+	for i := range page.filteredPools {
+		if page.filteredPools[i].Manifest.ID == nodeID {
+			return &page.filteredPools[i], true
 		}
 	}
 
@@ -284,7 +296,7 @@ func (page *Page) poolFor(nodeID string) (*pool.Pool, bool) {
 
 // SetPools 用新的盲盒池替换列表内容并重新过滤。
 func (page *Page) SetPools(pools []pool.Pool) {
-	page.localAll = pools
+	page.allPools = pools
 	page.applyFilter(page.searchEntry.Text)
 }
 
@@ -502,4 +514,26 @@ func (page *Page) rebuildResultTable() {
 // resultCell 生成结果表格里的一个居中单元格。
 func resultCell(text string, bold bool) fyne.CanvasObject {
 	return widget.NewLabelWithStyle(text, fyne.TextAlignCenter, fyne.TextStyle{Bold: bold})
+}
+
+// SetSourceOptions 设置数据来源的选项，并选中 selected。
+func (page *Page) SetSourceOptions(options []string, selected string) {
+	page.sourceSelect.SetOptions(options)
+	page.sourceSelect.SetSelected(selected)
+}
+
+// SetSourceStatus 说明当前实际生效的数据来源。
+func (page *Page) SetSourceStatus(text string) {
+	page.sourceLabel.SetText(text)
+
+	if page.leftPanel != nil {
+		page.leftPanel.Refresh()
+	}
+}
+
+// sourceChanged 把数据来源的选择变化转给装配层。
+func (page *Page) sourceChanged(option string) {
+	if page.OnSourceChange != nil {
+		page.OnSourceChange(option)
+	}
 }
