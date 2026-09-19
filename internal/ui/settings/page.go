@@ -55,12 +55,13 @@ func (page *Page) build() fyne.CanvasObject {
 	title := widget.NewLabelWithStyle("设置", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	sourceTitle := widget.NewLabelWithStyle("数据来源", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
-	page.sourceSelect = widget.NewSelect(config.Sources(), page.sourceChanged)
-	page.sourceSelect.SetSelected(config.DefaultSource())
-
 	page.sourceHint = widget.NewLabel(config.SourceHint(config.DefaultSource()))
 	page.sourceHint.Importance = widget.LowImportance
 	page.sourceHint.Wrapping = fyne.TextWrapWord
+
+	// 选中默认项会立刻触发 sourceChanged，所以上面的说明标签要先建好。
+	page.sourceSelect = widget.NewSelect(config.Sources(), page.sourceChanged)
+	page.sourceSelect.SetSelected(config.DefaultSource())
 
 	page.statusLabel = widget.NewLabel("")
 	page.statusLabel.Wrapping = fyne.TextWrapWord
