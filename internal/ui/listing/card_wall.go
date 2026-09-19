@@ -1,6 +1,8 @@
-package ui
+package listing
 
 import (
+	"blind-tools/internal/ui/common"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
@@ -64,11 +66,11 @@ func (w *cardWall) contentHeight() float32 {
 
 // CreateRenderer 创建卡片墙的绘制对象。
 func (w *cardWall) CreateRenderer() fyne.WidgetRenderer {
-	return &cardWallRenderer{baseRenderer: baseRenderer{}, wall: w}
+	return &cardWallRenderer{BaseRenderer: common.NewBaseRenderer(), wall: w}
 }
 
 type cardWallRenderer struct {
-	baseRenderer
+	common.BaseRenderer
 
 	wall *cardWall
 }

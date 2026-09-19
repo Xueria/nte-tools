@@ -1,4 +1,4 @@
-package ui
+package common
 
 import (
 	"errors"
@@ -9,9 +9,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// newNumericEntry 生成一个只接受非负整数的输入框。不捕获滚轮，面板在输入框上
+// NewNumericEntry 生成一个只接受非负整数的输入框。不捕获滚轮，面板在输入框上
 // 也能继续滚动。
-func newNumericEntry(placeholder string) *widget.Entry {
+func NewNumericEntry(placeholder string) *widget.Entry {
 	entry := widget.NewEntry()
 	entry.SetPlaceHolder(placeholder)
 	entry.Validator = numericValidator
@@ -21,8 +21,8 @@ func newNumericEntry(placeholder string) *widget.Entry {
 	return entry
 }
 
-// parseNonNegativeInt 解析用户输入的非负整数。
-func parseNonNegativeInt(text string) (int, bool) {
+// ParseNonNegativeInt 解析用户输入的非负整数。
+func ParseNonNegativeInt(text string) (int, bool) {
 	value, err := strconv.Atoi(strings.TrimSpace(text))
 
 	if err != nil || value < 0 {

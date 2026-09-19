@@ -1,4 +1,6 @@
-package ui
+// Package planner 是「盲盒规划」页及其列表条目：页面只负责展示与收集输入，
+// 方案怎么算留在 pool 域。
+package planner
 
 import (
 	"fmt"
@@ -6,6 +8,8 @@ import (
 	"strings"
 
 	"blind-tools/internal/pool"
+	"blind-tools/internal/ui/common"
+	"blind-tools/internal/ui/shell"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -21,8 +25,8 @@ const (
 	localBranchID = "local"
 )
 
-// PlannerPage 是「盲盒规划」页：左侧盲盒列表，右侧资源规划。
-type PlannerPage struct {
+// Page 是「盲盒规划」页：左侧盲盒列表，右侧资源规划。
+type Page struct {
 	root fyne.CanvasObject
 
 	localAll       []pool.Pool
@@ -38,7 +42,7 @@ type PlannerPage struct {
 	formCard           *widget.Card
 	resourceEntries    []*widget.Entry
 	keepResourceSelect *widget.Select
-	rangeSlider        *RangeSlider
+	rangeSlider        *common.RangeSlider
 	rangeLabel         *widget.Label
 	calculateBtn       *widget.Button
 
@@ -53,21 +57,21 @@ type PlannerPage struct {
 	OnRefresh func()
 }
 
-// NewPlannerPage 构建盲盒规划页。
-func NewPlannerPage() *PlannerPage {
-	page := &PlannerPage{}
+// NewPage 构建盲盒规划页。
+func NewPage() *Page {
+	page := &Page{}
 	page.root = page.build()
 
 	return page
 }
 
 // Tab 返回该页的页签标题、图标与内容。
-func (page *PlannerPage) Tab() Tab {
-	return Tab{Title: "盲盒规划", Icon: theme.HomeIcon(), Content: page.root}
+func (page *Page) Tab() shell.Tab {
+	return shell.Tab{Title: "盲盒规划", Icon: theme.HomeIcon(), Content: page.root}
 }
 
 // build 构建整页的左右分栏。
-func (page *PlannerPage) build() fyne.CanvasObject {
+func (page *Page) build() fyne.CanvasObject {
 	left := page.buildLeft()
 	right := page.buildRight()
 
@@ -84,7 +88,7 @@ func (page *PlannerPage) build() fyne.CanvasObject {
 }
 
 // buildLeft 构建搜索栏、刷新按钮与盲盒列表。
-func (page *PlannerPage) buildLeft() fyne.CanvasObject {
+func (page *Page) buildLeft() fyne.CanvasObject {
 	header := widget.NewLabelWithStyle("盲盒列表", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	page.searchEntry = widget.NewEntry()
@@ -158,7 +162,7 @@ func (page *PlannerPage) buildLeft() fyne.CanvasObject {
 }
 
 // SetStatus 在左栏底部显示提示；传空字符串则隐藏并让出空间。
-func (page *PlannerPage) SetStatus(text string) {
+func (page *Page) SetStatus(text string) {
 	if text == "" {
 		page.statusLabel.SetText("")
 		page.statusLabel.Hide()
@@ -173,12 +177,12 @@ func (page *PlannerPage) SetStatus(text string) {
 }
 
 // buildRight 构建资源表单与结果表格。
-func (page *PlannerPage) buildRight() fyne.CanvasObject {
+func (page *Page) buildRight() fyne.CanvasObject {
 	page.formCard = widget.NewCard("", "", nil)
 
 	page.keepResourceSelect = widget.NewSelect(nil, nil)
 
-	page.rangeSlider = NewRangeSlider(1, 1)
+	page.rangeSlider = common.NewRangeSlider(1, 1)
 	page.rangeSlider.Step = 1
 	page.rangeSlider.OnChanged = func(lower, upper float64) {
 		page.rangeLabel.SetText(fmt.Sprintf("第 %d 抽 ～ 第 %d 抽", int(lower), int(upper)))
@@ -203,7 +207,7 @@ func (page *PlannerPage) buildRight() fyne.CanvasObject {
 }
 
 // applyFilter 按名称或标识过滤列表，并让选中项跟着过滤结果走。
-func (page *PlannerPage) applyFilter(text string) {
+func (page *Page) applyFilter(text string) {
 	query := strings.ToLower(strings.TrimSpace(text))
 
 	page.localFiltered = filterPools(page.localAll, query)
@@ -257,7 +261,7 @@ func filterPools(pools []pool.Pool, query string) []pool.Pool {
 }
 
 // leafIDs 返回当前过滤结果在列表树里的叶子节点标识。
-func (page *PlannerPage) leafIDs() []widget.TreeNodeID {
+func (page *Page) leafIDs() []widget.TreeNodeID {
 	ids := make([]widget.TreeNodeID, len(page.localFiltered))
 
 	for i, blindPool := range page.localFiltered {
@@ -268,7 +272,7 @@ func (page *PlannerPage) leafIDs() []widget.TreeNodeID {
 }
 
 // poolFor 把列表树的叶子节点标识解析成盲盒池。
-func (page *PlannerPage) poolFor(nodeID string) (*pool.Pool, bool) {
+func (page *Page) poolFor(nodeID string) (*pool.Pool, bool) {
 	for i := range page.localFiltered {
 		if page.localFiltered[i].Manifest.ID == nodeID {
 			return &page.localFiltered[i], true
@@ -279,13 +283,13 @@ func (page *PlannerPage) poolFor(nodeID string) (*pool.Pool, bool) {
 }
 
 // SetPools 用新的盲盒池替换列表内容并重新过滤。
-func (page *PlannerPage) SetPools(pools []pool.Pool) {
+func (page *Page) SetPools(pools []pool.Pool) {
 	page.localAll = pools
 	page.applyFilter(page.searchEntry.Text)
 }
 
 // selectPool 记住选中的盲盒池并重建右栏。
-func (page *PlannerPage) selectPool(nodeID widget.TreeNodeID) {
+func (page *Page) selectPool(nodeID widget.TreeNodeID) {
 	blindPool, ok := page.poolFor(nodeID)
 
 	if !ok {
@@ -298,7 +302,7 @@ func (page *PlannerPage) selectPool(nodeID widget.TreeNodeID) {
 }
 
 // applySelection 按当前选中项重建右栏。
-func (page *PlannerPage) applySelection() {
+func (page *Page) applySelection() {
 	page.plan = nil
 	page.insufficient = false
 	page.insufficientDraw = 0
@@ -325,7 +329,7 @@ func (page *PlannerPage) applySelection() {
 	form := widget.NewForm()
 
 	for _, resource := range selected.Resources {
-		entry := newNumericEntry("0")
+		entry := common.NewNumericEntry("0")
 		form.Append(resource.Name, entry)
 		page.resourceEntries = append(page.resourceEntries, entry)
 	}
@@ -380,7 +384,7 @@ func (page *PlannerPage) applySelection() {
 }
 
 // calculate 解析输入、计算方案并刷新结果表格。
-func (page *PlannerPage) calculate() {
+func (page *Page) calculate() {
 	if page.selected == nil {
 		return
 	}
@@ -394,7 +398,7 @@ func (page *PlannerPage) calculate() {
 			text = "0"
 		}
 
-		amount, ok := parseNonNegativeInt(text)
+		amount, ok := common.ParseNonNegativeInt(text)
 
 		if !ok {
 			page.summaryLabel.SetText(fmt.Sprintf("请输入有效的「%s」数量", resource.Name))
@@ -425,7 +429,7 @@ func (page *PlannerPage) calculate() {
 }
 
 // preferredResourceID 返回「优先保留」选中的资源标识。
-func (page *PlannerPage) preferredResourceID() string {
+func (page *Page) preferredResourceID() string {
 	index := page.keepResourceSelect.SelectedIndex()
 
 	if index <= 0 { // 「无」（或未选中）表示不指定
@@ -442,7 +446,7 @@ func (page *PlannerPage) preferredResourceID() string {
 }
 
 // updateSummary 展示最终余额，以及资源不足时的提示。
-func (page *PlannerPage) updateSummary(result pool.PlanResult) {
+func (page *Page) updateSummary(result pool.PlanResult) {
 	ids := page.selected.SortedResourceIDs()
 	parts := make([]string, 0, len(ids))
 
@@ -462,7 +466,7 @@ func (page *PlannerPage) updateSummary(result pool.PlanResult) {
 // rebuildResultTable 把结果重画成一张按内容撑满高度的表格。不用 widget.Table：
 // 它自带滚动、窗口小的时候只显示一行，而这里的表格交给外层滚动容器，能一次
 // 露出全部行。
-func (page *PlannerPage) rebuildResultTable() {
+func (page *Page) rebuildResultTable() {
 	rows := []fyne.CanvasObject{
 		container.NewGridWithColumns(4,
 			resultCell("抽数", true),

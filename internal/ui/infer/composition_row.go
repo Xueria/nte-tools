@@ -1,4 +1,4 @@
-package ui
+package infer
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"blind-tools/internal/bid"
+	"blind-tools/internal/ui/common"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -17,6 +18,8 @@ const (
 	// compositionRowHeight、compositionRowMinWidth 组合行的高度与建议最小宽度。
 	compositionRowHeight   float32 = 42
 	compositionRowMinWidth float32 = 240
+	// compositionTextSize 组合行与件数标签共用的字号。
+	compositionTextSize float32 = 12
 	// priorityQuality 关注的品质：含它的组合在结果里标星。
 	priorityQuality = "red"
 )
@@ -58,7 +61,7 @@ func (r *compositionRow) CreateRenderer() fyne.WidgetRenderer {
 	items.TextSize = compositionTextSize
 
 	renderer := &compositionRowRenderer{
-		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{title, items}},
+		BaseRenderer: common.NewBaseRenderer(title, items),
 		row:          r,
 		title:        title,
 		items:        items,
@@ -69,7 +72,7 @@ func (r *compositionRow) CreateRenderer() fyne.WidgetRenderer {
 }
 
 type compositionRowRenderer struct {
-	baseRenderer
+	common.BaseRenderer
 
 	row   *compositionRow
 	title *canvas.Text
@@ -84,7 +87,7 @@ func (r *compositionRowRenderer) Refresh() {
 	r.title.Color = th.Color(theme.ColorNameForeground, variant)
 
 	r.items.Color = th.Color(theme.ColorNamePlaceHolder, variant)
-	r.items.Text = fitText(describeComposition(r.row.composition), r.textWidth(),
+	r.items.Text = common.FitText(describeComposition(r.row.composition), r.textWidth(),
 		compositionTextSize, fyne.TextStyle{})
 
 	canvas.Refresh(r.row)
@@ -93,13 +96,13 @@ func (r *compositionRowRenderer) Refresh() {
 func (r *compositionRowRenderer) Layout(size fyne.Size) {
 	textWidth := r.textWidth()
 
-	r.title.Move(fyne.NewPos(cardInset, 5))
+	r.title.Move(fyne.NewPos(common.CardInset, 5))
 	r.title.Resize(fyne.NewSize(textWidth, 16))
 
-	r.items.Move(fyne.NewPos(cardInset, 22))
+	r.items.Move(fyne.NewPos(common.CardInset, 22))
 	r.items.Resize(fyne.NewSize(textWidth, 16))
 
-	r.items.Text = fitText(describeComposition(r.row.composition), textWidth, compositionTextSize, fyne.TextStyle{})
+	r.items.Text = common.FitText(describeComposition(r.row.composition), textWidth, compositionTextSize, fyne.TextStyle{})
 }
 
 func (r *compositionRowRenderer) MinSize() fyne.Size {
@@ -108,13 +111,13 @@ func (r *compositionRowRenderer) MinSize() fyne.Size {
 
 // textWidth 返回组合行可用于文字的宽度：右侧留出滚动条的位置。
 func (r *compositionRowRenderer) textWidth() float32 {
-	return r.row.Size().Width - cardInset*2 - scrollBarInset()
+	return r.row.Size().Width - common.CardInset*2 - common.ScrollBarInset()
 }
 
 // compositionTitle 生成组合行的摘要：总价、件数与均价；含关注品质的组合加星标。
 func compositionTitle(composition bid.Composition) string {
 	title := fmt.Sprintf("总价 %s · %d 件 · 均价 %s",
-		formatValue(composition.Total), composition.Count, formatAverage(composition.Average()))
+		common.FormatValue(composition.Total), composition.Count, common.FormatAverage(composition.Average()))
 
 	if containsQuality(composition, priorityQuality) {
 		return "★ " + title

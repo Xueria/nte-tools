@@ -1,6 +1,8 @@
-package ui
+package infer
 
 import (
+	"blind-tools/internal/ui/common"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -53,11 +55,11 @@ func (f *chipFlow) MinSize() fyne.Size {
 
 // CreateRenderer 创建标签区的绘制对象。
 func (f *chipFlow) CreateRenderer() fyne.WidgetRenderer {
-	return &chipFlowRenderer{baseRenderer: baseRenderer{}, flow: f}
+	return &chipFlowRenderer{BaseRenderer: common.NewBaseRenderer(), flow: f}
 }
 
 type chipFlowRenderer struct {
-	baseRenderer
+	common.BaseRenderer
 
 	flow *chipFlow
 }
@@ -112,7 +114,7 @@ func (r *chipFlowRenderer) MinSize() fyne.Size {
 
 // flowScroll 把标签流放进滚动容器里，右侧留出滚动条的宽度。
 func flowScroll(flow *chipFlow) fyne.CanvasObject {
-	content := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), flow)
+	content := container.New(layout.NewCustomPaddedLayout(0, 0, 0, common.ScrollBarInset()), flow)
 
 	return container.NewVScroll(content)
 }

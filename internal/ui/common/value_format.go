@@ -1,17 +1,17 @@
-package ui
+package common
 
 import (
 	"strconv"
 	"strings"
 )
 
-// formatValue 给价格加千分位，便于读七位数。
-func formatValue(value int) string {
+// FormatValue 给价格加千分位，便于读七位数。
+func FormatValue(value int) string {
 	return groupDigits(strconv.Itoa(value))
 }
 
-// formatAverage 均价保留两位小数，同样带千分位。
-func formatAverage(average float64) string {
+// FormatAverage 均价保留两位小数，同样带千分位。
+func FormatAverage(average float64) string {
 	whole, fraction, _ := strings.Cut(strconv.FormatFloat(average, 'f', 2, 64), ".")
 
 	return groupDigits(whole) + "." + fraction

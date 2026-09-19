@@ -1,9 +1,9 @@
-package ui
+package common
 
 import "image/color"
 
-// qualitySwatchSize 品质色块的边长。
-const qualitySwatchSize float32 = 8
+// QualitySwatchSize 品质色块的边长。
+const QualitySwatchSize float32 = 8
 
 // qualityLabels 品质标识的展示名，键与数据里的 quality 一致。
 var qualityLabels = map[string]string{
@@ -25,8 +25,8 @@ var qualityColors = map[string]color.Color{
 	"gray":   nrgba(0x8A, 0x8A, 0x8A, 0xFF),
 }
 
-// qualityLabel 返回品质的展示名，未知品质原样返回标识。
-func qualityLabel(quality string) string {
+// QualityLabel 返回品质的展示名，未知品质原样返回标识。
+func QualityLabel(quality string) string {
 	if label, ok := qualityLabels[quality]; ok {
 		return label
 	}
@@ -34,8 +34,8 @@ func qualityLabel(quality string) string {
 	return quality
 }
 
-// qualityColor 返回品质的展示色，未知品质用中性灰。
-func qualityColor(quality string) color.Color {
+// QualityColor 返回品质的展示色，未知品质用中性灰。
+func QualityColor(quality string) color.Color {
 	if c, ok := qualityColors[quality]; ok {
 		return c
 	}

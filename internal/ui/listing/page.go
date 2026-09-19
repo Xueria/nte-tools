@@ -1,7 +1,10 @@
-package ui
+// Package listing 是「拍品清单」页：清单列表、占格预览与拍品卡片。
+package listing
 
 import (
 	"blind-tools/internal/bid"
+	"blind-tools/internal/ui/common"
+	"blind-tools/internal/ui/shell"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -13,9 +16,9 @@ import (
 // listingSplitRatio 清单列表在左右分栏中的初始占比，左栏只放名称，取窄一些。
 const listingSplitRatio = 0.22
 
-// ListingPage 是「拍品清单」页：左侧列出所有清单，右侧按清单的呈现方式渲染
+// Page 是「拍品清单」页：左侧列出所有清单，右侧按清单的呈现方式渲染
 // 预览并列出拍品卡片。
-type ListingPage struct {
+type Page struct {
 	root fyne.CanvasObject
 
 	listings []bid.Listing
@@ -28,21 +31,21 @@ type ListingPage struct {
 	cardScroll   *container.Scroll
 }
 
-// NewListingPage 构建拍品清单页。
-func NewListingPage() *ListingPage {
-	page := &ListingPage{}
+// NewPage 构建拍品清单页。
+func NewPage() *Page {
+	page := &Page{}
 	page.root = page.build()
 
 	return page
 }
 
 // Tab 返回该页的页签标题、图标与内容。
-func (page *ListingPage) Tab() Tab {
-	return Tab{Title: "拍品清单", Icon: theme.ListIcon(), Content: page.root}
+func (page *Page) Tab() shell.Tab {
+	return shell.Tab{Title: "拍品清单", Icon: theme.ListIcon(), Content: page.root}
 }
 
 // SetListings 用新的竞拍清单数据替换页面内容，并默认选中第一份清单。
-func (page *ListingPage) SetListings(listings []bid.Listing) {
+func (page *Page) SetListings(listings []bid.Listing) {
 	page.listings = listings
 	page.listingList.Refresh()
 
@@ -61,7 +64,7 @@ func (page *ListingPage) SetListings(listings []bid.Listing) {
 }
 
 // SetStatus 显示加载状态；传空字符串即隐藏。
-func (page *ListingPage) SetStatus(text string) {
+func (page *Page) SetStatus(text string) {
 	if text == "" {
 		page.statusLabel.SetText("")
 		page.statusLabel.Hide()
@@ -72,7 +75,7 @@ func (page *ListingPage) SetStatus(text string) {
 }
 
 // build 组装左侧清单选择器与右侧清单预览、拍品卡片。
-func (page *ListingPage) build() fyne.CanvasObject {
+func (page *Page) build() fyne.CanvasObject {
 	page.listingList = widget.NewList(
 		func() int { return len(page.listings) },
 		func() fyne.CanvasObject { return widget.NewLabel("") },
@@ -96,7 +99,7 @@ func (page *ListingPage) build() fyne.CanvasObject {
 	page.cardWall = newCardWall()
 	// 滚动条浮在滚动内容之上，所以把它的宽度留在内容右侧：滚动条仍停在
 	// 面板右边缘，卡片区则缩短，最右一列不会被压住。
-	cardContent := container.New(layout.NewCustomPaddedLayout(0, 0, 0, scrollBarInset()), page.cardWall)
+	cardContent := container.New(layout.NewCustomPaddedLayout(0, 0, 0, common.ScrollBarInset()), page.cardWall)
 	page.cardScroll = container.NewVScroll(cardContent)
 
 	preview := container.NewVBox(page.previewLabel, page.previewBox, widget.NewSeparator())
@@ -114,7 +117,7 @@ func (page *ListingPage) build() fyne.CanvasObject {
 
 // selectListing 渲染第 index 份清单：标题取清单自己的名称，预览内容交给
 // 清单自身决定。
-func (page *ListingPage) selectListing(index int) {
+func (page *Page) selectListing(index int) {
 	if index < 0 || index >= len(page.listings) {
 		return
 	}

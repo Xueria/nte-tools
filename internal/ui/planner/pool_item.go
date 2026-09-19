@@ -1,10 +1,11 @@
-package ui
+package planner
 
 import (
 	"fmt"
 	"image/color"
 
 	"blind-tools/internal/pool"
+	"blind-tools/internal/ui/common"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -50,7 +51,7 @@ func (item *poolItem) CreateRenderer() fyne.WidgetRenderer {
 	subtitle := canvas.NewText(item.subtitle, color.White)
 
 	renderer := &poolItemRenderer{
-		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{title, subtitle}},
+		BaseRenderer: common.NewBaseRenderer(title, subtitle),
 		title:        title,
 		subtitle:     subtitle,
 		item:         item,
@@ -61,7 +62,7 @@ func (item *poolItem) CreateRenderer() fyne.WidgetRenderer {
 }
 
 type poolItemRenderer struct {
-	baseRenderer
+	common.BaseRenderer
 
 	title    *canvas.Text
 	subtitle *canvas.Text

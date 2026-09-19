@@ -1,4 +1,4 @@
-package ui
+package common
 
 import (
 	"image/color"
@@ -13,9 +13,9 @@ type md3Theme struct {
 	base fyne.Theme
 }
 
-// newMD3Theme 返回 Material Design 3 风格的主题：字体与图标交给 Fyne 默认主题，
+// NewMD3Theme 返回 Material Design 3 风格的主题：字体与图标交给 Fyne 默认主题，
 // 颜色与尺寸按 MD3 调整。
-func newMD3Theme() fyne.Theme {
+func NewMD3Theme() fyne.Theme {
 	return &md3Theme{base: theme.DefaultTheme()}
 }
 

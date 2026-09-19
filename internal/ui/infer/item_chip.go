@@ -1,10 +1,11 @@
-package ui
+package infer
 
 import (
 	"fmt"
 	"image/color"
 
 	"blind-tools/internal/bid"
+	"blind-tools/internal/ui/common"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -35,14 +36,14 @@ const (
 type chip struct {
 	widget.BaseWidget
 
-	page  *InferPage
+	page  *Page
 	index int
 	item  bid.Item
 	count int
 }
 
 // newChip 构建一个空标签，内容由 set 填充。
-func newChip(page *InferPage) *chip {
+func newChip(page *Page) *chip {
 	item := &chip{page: page}
 	item.ExtendBaseWidget(item)
 
@@ -95,7 +96,7 @@ func (c *chip) CreateRenderer() fyne.WidgetRenderer {
 	name.TextSize = chipTextSize
 
 	renderer := &chipRenderer{
-		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{background, dot, name}},
+		BaseRenderer: common.NewBaseRenderer(background, dot, name),
 		chip:         c,
 		background:   background,
 		dot:          dot,
@@ -107,7 +108,7 @@ func (c *chip) CreateRenderer() fyne.WidgetRenderer {
 }
 
 type chipRenderer struct {
-	baseRenderer
+	common.BaseRenderer
 
 	chip       *chip
 	background *canvas.Rectangle
@@ -130,7 +131,7 @@ func (r *chipRenderer) Refresh() {
 		r.name.Color = th.Color(theme.ColorNameForeground, variant)
 	}
 
-	r.dot.FillColor = qualityColor(r.chip.item.Quality)
+	r.dot.FillColor = common.QualityColor(r.chip.item.Quality)
 	r.name.Text = chipTitle(r.chip.item.Name, r.chip.count)
 
 	canvas.Refresh(r.chip)
@@ -167,14 +168,14 @@ func chipTitle(name string, count int) string {
 type selectedChip struct {
 	widget.BaseWidget
 
-	page  *InferPage
+	page  *Page
 	index int
 	item  bid.Item
 	count int
 }
 
 // newSelectedChip 构建一个空标签，内容由 set 填充。
-func newSelectedChip(page *InferPage) *selectedChip {
+func newSelectedChip(page *Page) *selectedChip {
 	chip := &selectedChip{page: page}
 	chip.ExtendBaseWidget(chip)
 
@@ -234,7 +235,7 @@ func (c *selectedChip) CreateRenderer() fyne.WidgetRenderer {
 	crossB.StrokeWidth = 1.5
 
 	renderer := &selectedChipRenderer{
-		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{background, dot, name, crossA, crossB}},
+		BaseRenderer: common.NewBaseRenderer(background, dot, name, crossA, crossB),
 		chip:         c,
 		background:   background,
 		dot:          dot,
@@ -248,7 +249,7 @@ func (c *selectedChip) CreateRenderer() fyne.WidgetRenderer {
 }
 
 type selectedChipRenderer struct {
-	baseRenderer
+	common.BaseRenderer
 
 	chip       *selectedChip
 	background *canvas.Rectangle
@@ -268,7 +269,7 @@ func (r *selectedChipRenderer) Refresh() {
 	r.background.FillColor = fill
 	r.background.StrokeColor = fill
 
-	r.dot.FillColor = qualityColor(r.chip.item.Quality)
+	r.dot.FillColor = common.QualityColor(r.chip.item.Quality)
 
 	r.name.Color = onFill
 	r.name.Text = chipTitle(r.chip.item.Name, r.chip.count)
@@ -293,7 +294,7 @@ func (r *selectedChipRenderer) Layout(size fyne.Size) {
 
 	r.name.Move(fyne.NewPos(nameLeft, (size.Height-lineHeight)/2))
 	r.name.Resize(fyne.NewSize(nameWidth, lineHeight))
-	r.name.Text = fitText(chipTitle(r.chip.item.Name, r.chip.count), nameWidth, chipTextSize, fyne.TextStyle{})
+	r.name.Text = common.FitText(chipTitle(r.chip.item.Name, r.chip.count), nameWidth, chipTextSize, fyne.TextStyle{})
 
 	top := (size.Height - selectedCrossSize) / 2
 	bottom := top + selectedCrossSize

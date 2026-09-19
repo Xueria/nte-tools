@@ -1,9 +1,10 @@
-package ui
+package listing
 
 import (
 	"image/color"
 
 	"blind-tools/internal/bid"
+	"blind-tools/internal/ui/common"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -73,7 +74,7 @@ func (c *itemCard) CreateRenderer() fyne.WidgetRenderer {
 	value.TextStyle = fyne.TextStyle{Bold: true}
 
 	renderer := &itemCardRenderer{
-		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{background, swatch, quality, name, value}},
+		BaseRenderer: common.NewBaseRenderer(background, swatch, quality, name, value),
 		card:         c,
 		background:   background,
 		swatch:       swatch,
@@ -87,7 +88,7 @@ func (c *itemCard) CreateRenderer() fyne.WidgetRenderer {
 }
 
 type itemCardRenderer struct {
-	baseRenderer
+	common.BaseRenderer
 
 	card       *itemCard
 	background *canvas.Rectangle
@@ -104,38 +105,38 @@ func (r *itemCardRenderer) Refresh() {
 	r.background.FillColor = th.Color(theme.ColorNameOverlayBackground, variant)
 	r.background.StrokeColor = th.Color(theme.ColorNameSeparator, variant)
 
-	r.swatch.FillColor = qualityColor(r.card.item.Quality)
+	r.swatch.FillColor = common.QualityColor(r.card.item.Quality)
 
-	r.quality.Text = qualityLabel(r.card.item.Quality)
-	r.quality.Color = qualityColor(r.card.item.Quality)
+	r.quality.Text = common.QualityLabel(r.card.item.Quality)
+	r.quality.Color = common.QualityColor(r.card.item.Quality)
 
 	r.name.Color = th.Color(theme.ColorNameForeground, variant)
 
-	r.value.Text = formatValue(r.card.item.Value)
+	r.value.Text = common.FormatValue(r.card.item.Value)
 	r.value.Color = th.Color(theme.ColorNamePrimary, variant)
 
-	r.fitName(r.card.Size().Width - cardInset*2)
+	r.fitName(r.card.Size().Width - common.CardInset*2)
 
 	canvas.Refresh(r.card)
 }
 
 func (r *itemCardRenderer) Layout(size fyne.Size) {
-	textWidth := size.Width - cardInset*2
+	textWidth := size.Width - common.CardInset*2
 
 	r.background.Resize(size)
 
-	r.swatch.Move(fyne.NewPos(cardInset, cardInset+(cardQualityRowHeight-qualitySwatchSize)/2))
-	r.swatch.Resize(fyne.NewSize(qualitySwatchSize, qualitySwatchSize))
+	r.swatch.Move(fyne.NewPos(common.CardInset, common.CardInset+(cardQualityRowHeight-common.QualitySwatchSize)/2))
+	r.swatch.Resize(fyne.NewSize(common.QualitySwatchSize, common.QualitySwatchSize))
 
-	qualityLeft := cardInset + qualitySwatchSize + 4
-	r.quality.Move(fyne.NewPos(qualityLeft, cardInset))
-	r.quality.Resize(fyne.NewSize(textWidth-qualitySwatchSize-4, cardQualityRowHeight))
+	qualityLeft := common.CardInset + common.QualitySwatchSize + 4
+	r.quality.Move(fyne.NewPos(qualityLeft, common.CardInset))
+	r.quality.Resize(fyne.NewSize(textWidth-common.QualitySwatchSize-4, cardQualityRowHeight))
 
-	nameTop := cardInset + cardQualityRowHeight + 2
-	r.name.Move(fyne.NewPos(cardInset, nameTop))
+	nameTop := common.CardInset + cardQualityRowHeight + 2
+	r.name.Move(fyne.NewPos(common.CardInset, nameTop))
 	r.name.Resize(fyne.NewSize(textWidth, cardRowHeight))
 
-	r.value.Move(fyne.NewPos(cardInset, nameTop+cardRowHeight+2))
+	r.value.Move(fyne.NewPos(common.CardInset, nameTop+cardRowHeight+2))
 	r.value.Resize(fyne.NewSize(textWidth, cardRowHeight))
 
 	r.fitName(textWidth)
@@ -147,5 +148,5 @@ func (r *itemCardRenderer) MinSize() fyne.Size {
 
 // fitName 按可用宽度截断名称，超出部分用省略号。
 func (r *itemCardRenderer) fitName(width float32) {
-	r.name.Text = fitText(r.card.item.Name, width, cardNameTextSize, fyne.TextStyle{})
+	r.name.Text = common.FitText(r.card.item.Name, width, cardNameTextSize, fyne.TextStyle{})
 }

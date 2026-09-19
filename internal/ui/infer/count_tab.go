@@ -1,8 +1,10 @@
-package ui
+package infer
 
 import (
 	"fmt"
 	"image/color"
+
+	"blind-tools/internal/ui/common"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -21,14 +23,14 @@ const (
 type countTab struct {
 	widget.BaseWidget
 
-	page     *InferPage
+	page     *Page
 	index    int
 	count    int
 	selected bool
 }
 
 // newCountTab 构建一个空件数标签，内容由 set 填充。
-func newCountTab(page *InferPage) *countTab {
+func newCountTab(page *Page) *countTab {
 	tab := &countTab{page: page}
 	tab.ExtendBaseWidget(tab)
 
@@ -82,7 +84,7 @@ func (t *countTab) CreateRenderer() fyne.WidgetRenderer {
 	label.Alignment = fyne.TextAlignCenter
 
 	renderer := &countTabRenderer{
-		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{background, label}},
+		BaseRenderer: common.NewBaseRenderer(background, label),
 		tab:          t,
 		background:   background,
 		label:        label,
@@ -93,7 +95,7 @@ func (t *countTab) CreateRenderer() fyne.WidgetRenderer {
 }
 
 type countTabRenderer struct {
-	baseRenderer
+	common.BaseRenderer
 
 	tab        *countTab
 	background *canvas.Rectangle

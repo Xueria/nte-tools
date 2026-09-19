@@ -1,4 +1,4 @@
-package ui
+package listing
 
 import (
 	"blind-tools/internal/bid"

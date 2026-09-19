@@ -1,10 +1,14 @@
-package ui
+// Package infer 是「拍品推测」页：候选拍品标签、推测条件输入与组合列表。
+// 页面不自己做推测，条件与候选池交给装配层。
+package infer
 
 import (
 	"fmt"
 	"strings"
 
 	"blind-tools/internal/bid"
+	"blind-tools/internal/ui/common"
+	"blind-tools/internal/ui/shell"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -28,10 +32,10 @@ const (
 	priceModeTotal   = "总价"
 )
 
-// InferPage 是「拍品推测」页：先选一份拍品清单作为候选池，勾选已确认在组合里的
+// Page 是「拍品推测」页：先选一份拍品清单作为候选池，勾选已确认在组合里的
 // 拍品，再填均价或总价与数量区间；先用一条横向标签列出有组合的件数，选中某个
 // 件数后再看它的组合。
-type InferPage struct {
+type Page struct {
 	root fyne.CanvasObject
 
 	// 清单与候选池
@@ -43,7 +47,7 @@ type InferPage struct {
 	avgEntry      *widget.Entry
 	totalEntry    *widget.Entry
 	maxTotalEntry *widget.Entry
-	countSlider   *RangeSlider
+	countSlider   *common.RangeSlider
 	countLabel    *widget.Label
 
 	// 已确认拍品：上面是候选池标签，下面是已选择标签
@@ -80,22 +84,22 @@ type InferPage struct {
 	OnSelectCount func(count int)
 }
 
-// NewInferPage 构建拍品推测页。
-func NewInferPage() *InferPage {
-	page := &InferPage{selectedTab: -1}
+// NewPage 构建拍品推测页。
+func NewPage() *Page {
+	page := &Page{selectedTab: -1}
 	page.root = page.build()
 
 	return page
 }
 
 // Tab 返回该页的页签标题、图标与内容。
-func (page *InferPage) Tab() Tab {
-	return Tab{Title: "拍品推测", Icon: theme.SearchIcon(), Content: page.root}
+func (page *Page) Tab() shell.Tab {
+	return shell.Tab{Title: "拍品推测", Icon: theme.SearchIcon(), Content: page.root}
 }
 
 // SetListings 用新的拍品清单数据重建清单选择器，并默认选中第一份清单，
 // 候选池随之换成该清单的全部拍品。
-func (page *InferPage) SetListings(listings []bid.Listing) {
+func (page *Page) SetListings(listings []bid.Listing) {
 	page.listings = listings
 
 	names := make([]string, 0, len(listings))
@@ -118,7 +122,7 @@ func (page *InferPage) SetListings(listings []bid.Listing) {
 
 // selectListing 把候选池换成选中的那份清单的拍品：换清单后原来的勾选没有意义，
 // 因此整池重建。
-func (page *InferPage) selectListing(name string) {
+func (page *Page) selectListing(name string) {
 	for _, listing := range page.listings {
 		if listing.Name == name {
 			page.setPool(listing.Items)
@@ -128,7 +132,7 @@ func (page *InferPage) selectListing(name string) {
 }
 
 // setPool 用新的候选拍品重建标签区，默认没有已确认拍品。
-func (page *InferPage) setPool(items []bid.Item) {
+func (page *Page) setPool(items []bid.Item) {
 	page.items = items
 	page.confirmed = make([]int, len(items))
 	page.chips = make([]*chip, 0, len(items))
@@ -144,7 +148,7 @@ func (page *InferPage) setPool(items []bid.Item) {
 }
 
 // resetResults 清空上一次推测的件数档位与组合，换候选池后必须重新推测。
-func (page *InferPage) resetResults() {
+func (page *Page) resetResults() {
 	page.inferred = false
 	page.requiredCount = 0
 	page.counts = nil
@@ -159,7 +163,7 @@ func (page *InferPage) resetResults() {
 }
 
 // SetCounts 展示新的件数档位，并默认选中最小的那个。
-func (page *InferPage) SetCounts(counts []int) {
+func (page *Page) SetCounts(counts []int) {
 	page.counts = counts
 	page.selectedTab = -1
 
@@ -189,7 +193,7 @@ func (page *InferPage) SetCounts(counts []int) {
 }
 
 // SetCompositions 展示当前件数下的组合。
-func (page *InferPage) SetCompositions(result bid.InferResult) {
+func (page *Page) SetCompositions(result bid.InferResult) {
 	page.results = result.Compositions
 	page.truncated = result.Truncated
 
@@ -200,7 +204,7 @@ func (page *InferPage) SetCompositions(result bid.InferResult) {
 }
 
 // SetStatus 显示提示或错误；传空字符串即隐藏。
-func (page *InferPage) SetStatus(text string) {
+func (page *Page) SetStatus(text string) {
 	if text == "" {
 		page.statusLabel.SetText("")
 		page.statusLabel.Hide()
@@ -211,14 +215,14 @@ func (page *InferPage) SetStatus(text string) {
 }
 
 // build 组装左侧筛选栏与右侧输入、件数标签、组合列表。
-func (page *InferPage) build() fyne.CanvasObject {
+func (page *Page) build() fyne.CanvasObject {
 	left := page.buildFilter()
 
 	page.listingSelect = widget.NewSelect(nil, page.selectListing)
 
-	page.avgEntry = newNumericEntry("例如 5000")
-	page.totalEntry = newNumericEntry("例如 50000")
-	page.maxTotalEntry = newNumericEntry("默认 10000000")
+	page.avgEntry = common.NewNumericEntry("例如 5000")
+	page.totalEntry = common.NewNumericEntry("例如 50000")
+	page.maxTotalEntry = common.NewNumericEntry("默认 10000000")
 
 	page.modeRadio = widget.NewRadioGroup([]string{priceModeAverage, priceModeTotal}, page.applyPriceMode)
 	page.modeRadio.Horizontal = true
@@ -237,7 +241,7 @@ func (page *InferPage) build() fyne.CanvasObject {
 
 	page.countLabel = widget.NewLabel("")
 
-	page.countSlider = NewRangeSlider(minItemCount, minItemCount)
+	page.countSlider = common.NewRangeSlider(minItemCount, minItemCount)
 	page.countSlider.Step = 1
 	page.countSlider.OnChanged = func(_, _ float64) { page.updateCountLabel() }
 	page.configureCountSlider()
@@ -253,7 +257,7 @@ func (page *InferPage) build() fyne.CanvasObject {
 
 	// 件数用一条横向可滚动的标签条展示，省下竖向空间给组合列表。
 	page.countBar = container.NewHBox()
-	barContent := container.New(layout.NewCustomPaddedLayout(0, scrollBarInset(), 0, 0), page.countBar)
+	barContent := container.New(layout.NewCustomPaddedLayout(0, common.ScrollBarInset(), 0, 0), page.countBar)
 	barScroll := container.NewHScroll(barContent)
 
 	tabTitle := widget.NewLabelWithStyle("件数", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -302,7 +306,7 @@ func (page *InferPage) build() fyne.CanvasObject {
 
 // applyPriceMode 按价格方式启用对应的输入框：均价模式填均价与总价上限，
 // 总价模式只填总价。
-func (page *InferPage) applyPriceMode(mode string) {
+func (page *Page) applyPriceMode(mode string) {
 	if mode == priceModeTotal {
 		page.avgEntry.Disable()
 		page.maxTotalEntry.Disable()
@@ -317,7 +321,7 @@ func (page *InferPage) applyPriceMode(mode string) {
 }
 
 // buildFilter 构建左侧的已确认拍品筛选栏。
-func (page *InferPage) buildFilter() fyne.CanvasObject {
+func (page *Page) buildFilter() fyne.CanvasObject {
 	header := widget.NewLabelWithStyle("已确认在里面的拍品", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	page.searchEntry = widget.NewEntry()
@@ -354,7 +358,7 @@ func (page *InferPage) buildFilter() fyne.CanvasObject {
 }
 
 // configureCountSlider 按可用物品数设置数量区间的滑块范围。
-func (page *InferPage) configureCountSlider() {
+func (page *Page) configureCountSlider() {
 	maxCount := len(page.items)
 
 	if maxCount < minItemCount {
@@ -381,12 +385,12 @@ func (page *InferPage) configureCountSlider() {
 }
 
 // updateCountLabel 刷新数量区间的说明。
-func (page *InferPage) updateCountLabel() {
+func (page *Page) updateCountLabel() {
 	page.countLabel.SetText(fmt.Sprintf("数量 %d ～ %d 件", int(page.countSlider.Lower), int(page.countSlider.Upper)))
 }
 
 // selectCount 选中某个件数档位，并向装配层请求它的组合。
-func (page *InferPage) selectCount(index int) {
+func (page *Page) selectCount(index int) {
 	if index < 0 || index >= len(page.counts) {
 		return
 	}
@@ -405,7 +409,7 @@ func (page *InferPage) selectCount(index int) {
 }
 
 // compositionSummary 生成组合区标题：当前件数的组合数与总价范围。
-func (page *InferPage) compositionSummary() string {
+func (page *Page) compositionSummary() string {
 	if page.selectedTab < 0 || page.selectedTab >= len(page.counts) {
 		return ""
 	}
@@ -420,9 +424,9 @@ func (page *InferPage) compositionSummary() string {
 	first, last := page.results[0].Total, page.results[len(page.results)-1].Total
 
 	if first == last {
-		parts = append(parts, fmt.Sprintf("总价 %s", formatValue(first)))
+		parts = append(parts, fmt.Sprintf("总价 %s", common.FormatValue(first)))
 	} else {
-		parts = append(parts, fmt.Sprintf("总价 %s ～ %s", formatValue(first), formatValue(last)))
+		parts = append(parts, fmt.Sprintf("总价 %s ～ %s", common.FormatValue(first), common.FormatValue(last)))
 	}
 
 	if page.truncated {
@@ -433,7 +437,7 @@ func (page *InferPage) compositionSummary() string {
 }
 
 // applyFilter 按关键字过滤标签区；只影响显示，不改动勾选状态。
-func (page *InferPage) applyFilter(query string) {
+func (page *Page) applyFilter(query string) {
 	key := strings.ToLower(strings.TrimSpace(query))
 	chips := make([]fyne.CanvasObject, 0, len(page.items))
 
@@ -451,7 +455,7 @@ func (page *InferPage) applyFilter(query string) {
 
 // matchesItem 判断物品是否匹配搜索关键字（名称、品质标识与品质展示名）。
 func matchesItem(item bid.Item, key string) bool {
-	fields := []string{item.Name, item.Quality, qualityLabel(item.Quality)}
+	fields := []string{item.Name, item.Quality, common.QualityLabel(item.Quality)}
 
 	for _, field := range fields {
 		if strings.Contains(strings.ToLower(field), key) {
@@ -463,7 +467,7 @@ func matchesItem(item bid.Item, key string) bool {
 }
 
 // addItem 给某个物品加一件（同一物品可以加多件）。
-func (page *InferPage) addItem(index int) {
+func (page *Page) addItem(index int) {
 	if index < 0 || index >= len(page.confirmed) {
 		return
 	}
@@ -474,7 +478,7 @@ func (page *InferPage) addItem(index int) {
 }
 
 // removeItem 给某个物品减一件。
-func (page *InferPage) removeItem(index int) {
+func (page *Page) removeItem(index int) {
 	if index < 0 || index >= len(page.confirmed) || page.confirmed[index] == 0 {
 		return
 	}
@@ -485,7 +489,7 @@ func (page *InferPage) removeItem(index int) {
 }
 
 // removeAll 把某个物品从已选择里整个移除。
-func (page *InferPage) removeAll(index int) {
+func (page *Page) removeAll(index int) {
 	if index < 0 || index >= len(page.confirmed) || page.confirmed[index] == 0 {
 		return
 	}
@@ -496,7 +500,7 @@ func (page *InferPage) removeAll(index int) {
 }
 
 // clearSelection 取消所有已确认物品。
-func (page *InferPage) clearSelection() {
+func (page *Page) clearSelection() {
 	changed := false
 
 	for i := range page.confirmed {
@@ -516,7 +520,7 @@ func (page *InferPage) clearSelection() {
 }
 
 // refreshSelection 重建可选物品的计数标签、已选择区与摘要。
-func (page *InferPage) refreshSelection() {
+func (page *Page) refreshSelection() {
 	for i, item := range page.items {
 		page.chips[i].set(i, item, page.confirmed[i])
 	}
@@ -541,7 +545,7 @@ func (page *InferPage) refreshSelection() {
 }
 
 // requiredItems 返回已确认在组合里的物品，按件数展开（同一物品可能出现多次）。
-func (page *InferPage) requiredItems() []bid.Item {
+func (page *Page) requiredItems() []bid.Item {
 	items := make([]bid.Item, 0)
 
 	for i, item := range page.items {
@@ -554,7 +558,7 @@ func (page *InferPage) requiredItems() []bid.Item {
 }
 
 // updateHeader 刷新摘要：候选池与本次推测的件数档位。
-func (page *InferPage) updateHeader() {
+func (page *Page) updateHeader() {
 	parts := []string{fmt.Sprintf("%s：%d 件拍品", page.listingName(), len(page.items))}
 
 	switch {
@@ -577,7 +581,7 @@ func (page *InferPage) updateHeader() {
 }
 
 // listingName 返回当前候选池所属的清单名。
-func (page *InferPage) listingName() string {
+func (page *Page) listingName() string {
 	if page.listingSelect.Selected == "" {
 		return "未选择清单"
 	}

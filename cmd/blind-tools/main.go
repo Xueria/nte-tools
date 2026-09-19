@@ -7,7 +7,10 @@ import (
 	"blind-tools/internal/bid"
 	"blind-tools/internal/data"
 	"blind-tools/internal/pool"
-	"blind-tools/internal/ui"
+	"blind-tools/internal/ui/infer"
+	"blind-tools/internal/ui/listing"
+	"blind-tools/internal/ui/planner"
+	"blind-tools/internal/ui/shell"
 	"blind-tools/res"
 
 	"fyne.io/fyne/v2"
@@ -54,9 +57,9 @@ func run() {
 
 	root := data.Root()
 
-	planner := ui.NewPlannerPage()
-	infer := ui.NewInferPage()
-	listing := ui.NewListingPage()
+	plannerPage := planner.NewPage()
+	inferPage := infer.NewPage()
+	listingPage := listing.NewPage()
 
 	// candidates、required 与 query 记住上一次推测用的候选池与条件，
 	// 用于按需展开某个件数的组合。
@@ -67,22 +70,22 @@ func run() {
 	)
 
 	// 推测先算出「确实有组合」的件数档位；具体组合等用户选中某个件数时再枚举。
-	infer.OnInfer = func(items, wanted []bid.Item, q bid.InferQuery) {
+	inferPage.OnInfer = func(items, wanted []bid.Item, q bid.InferQuery) {
 		candidates, required, query = items, wanted, q
-		infer.SetCounts(bid.InferCounts(candidates, required, query))
+		inferPage.SetCounts(bid.InferCounts(candidates, required, query))
 	}
 
-	infer.OnSelectCount = func(count int) {
-		infer.SetCompositions(bid.InferCount(candidates, required, query, count))
+	inferPage.OnSelectCount = func(count int) {
+		inferPage.SetCompositions(bid.InferCount(candidates, required, query, count))
 	}
 
 	reload := func() {
-		loadPools(root, planner)
-		loadListings(root, listing, infer)
+		loadPools(root, plannerPage)
+		loadListings(root, listingPage, inferPage)
 	}
-	planner.OnRefresh = reload
+	plannerPage.OnRefresh = reload
 
-	window.SetContent(ui.NewShell(planner.Tab(), infer.Tab(), listing.Tab()))
+	window.SetContent(shell.NewShell(plannerPage.Tab(), inferPage.Tab(), listingPage.Tab()))
 
 	reload()
 
@@ -90,30 +93,30 @@ func run() {
 }
 
 // loadPools 读取本地盲盒池并推给盲盒规划页。
-func loadPools(root string, planner *ui.PlannerPage) {
+func loadPools(root string, plannerPage *planner.Page) {
 	pools, err := pool.LoadPools(root)
 
 	if err != nil {
-		planner.SetStatus(fmt.Sprintf("本地加载失败：%v", err))
+		plannerPage.SetStatus(fmt.Sprintf("本地加载失败：%v", err))
 
 		return
 	}
 
-	planner.SetStatus("")
-	planner.SetPools(pools)
+	plannerPage.SetStatus("")
+	plannerPage.SetPools(pools)
 }
 
 // loadListings 读取本地竞拍清单数据：推给拍品清单页与拍品推测页。
-func loadListings(root string, listing *ui.ListingPage, infer *ui.InferPage) {
+func loadListings(root string, listingPage *listing.Page, inferPage *infer.Page) {
 	listings, err := bid.LoadListings(root)
 
 	if err != nil {
-		listing.SetStatus(fmt.Sprintf("竞拍数据加载失败：%v", err))
+		listingPage.SetStatus(fmt.Sprintf("竞拍数据加载失败：%v", err))
 
 		return
 	}
 
-	listing.SetStatus("")
-	listing.SetListings(listings)
-	infer.SetListings(listings)
+	listingPage.SetStatus("")
+	listingPage.SetListings(listings)
+	inferPage.SetListings(listings)
 }

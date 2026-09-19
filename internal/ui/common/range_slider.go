@@ -1,4 +1,4 @@
-package ui
+package common
 
 import (
 	"image/color"
@@ -356,7 +356,7 @@ func (s *RangeSlider) CreateRenderer() fyne.WidgetRenderer {
 
 	objects := []fyne.CanvasObject{track, activeRange, focusIndicator, lowerThumb, upperThumb}
 	r := &rangeSliderRenderer{
-		baseRenderer:   baseRenderer{objects: objects},
+		BaseRenderer:   NewBaseRenderer(objects...),
 		track:          track,
 		activeRange:    activeRange,
 		lowerThumb:     lowerThumb,
@@ -405,7 +405,7 @@ func (s *RangeSlider) positionOf(value float64, pad float32, size fyne.Size) flo
 }
 
 type rangeSliderRenderer struct {
-	baseRenderer
+	BaseRenderer
 
 	track          *canvas.Rectangle
 	activeRange    *canvas.Rectangle
