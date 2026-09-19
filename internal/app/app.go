@@ -74,7 +74,8 @@ func Run(appID string) {
 	// 先把窗口显示出来，数据在后台读，读到多少填多少。
 	window.Show()
 
-	dataLoader.reload()
+	// 用设置页恢复出来的选择做第一次加载。
+	dataLoader.setSource(settingsPage.Choice())
 
 	application.Run()
 }
@@ -87,7 +88,7 @@ type loader struct {
 	inferPage    *infer.Page
 	settingsPage *settings.Page
 
-	source     string
+	choice     config.Choice
 	generation atomic.Int64
 }
 
@@ -99,20 +100,20 @@ func newLoader(plannerPage *planner.Page, listingPage *listing.Page, inferPage *
 		listingPage:  listingPage,
 		inferPage:    inferPage,
 		settingsPage: settingsPage,
-		source:       config.DefaultSource(),
+		choice:       config.Default(),
 	}
 }
 
 // setSource 换数据来源并重新加载。
-func (l *loader) setSource(source string) {
-	l.source = source
+func (l *loader) setSource(choice config.Choice) {
+	l.choice = choice
 	l.reload()
 }
 
 // reload 在后台读数据，读完回到界面线程推给页面。
 func (l *loader) reload() {
 	token := l.generation.Add(1)
-	source := config.OpenSource(l.source)
+	source := l.choice.Open()
 
 	l.plannerPage.SetStatus(loadingText)
 	l.listingPage.SetStatus(loadingText)
@@ -163,5 +164,5 @@ func (l *loader) apply(pools []pool.Pool, poolsErr error, listings []bid.Listing
 	}
 
 	l.settingsPage.SetStatus(fmt.Sprintf("已从%s加载：%d 份清单 · %d 个盲盒池",
-		l.source, len(listings), len(pools)))
+		l.choice.Label(), len(listings), len(pools)))
 }
