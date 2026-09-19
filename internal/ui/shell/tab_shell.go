@@ -29,9 +29,9 @@ func NewShell(tabs ...Tab) fyne.CanvasObject {
 		items = append(items, container.NewTabItemWithIcon(tab.Title, tab.Icon, tab.Content))
 	}
 
-	tabs := container.NewAppTabs(items...)
+	tabBar := container.NewAppTabs(items...)
 	// 页签栏保持紧凑，把窗口高度尽量留给页面内容。
-	tabs.SetTabLocation(container.TabLocationTop)
+	tabBar.SetTabLocation(container.TabLocationTop)
 
-	return shell
+	return tabBar
 }
