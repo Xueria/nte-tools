@@ -25,6 +25,10 @@ const (
 	windowTitle  = "Blind Tools"
 	windowWidth  = 840
 	windowHeight = 640
+
+	// remoteBaseURL 远程数据根：索引与索引里列出的数据文件都先从这里取，
+	// 取不到再落回本地数据目录。
+	remoteBaseURL = "https://nte-data.xueria.workers.dev/nte/data/"
 )
 
 func main() {
@@ -55,7 +59,10 @@ func run() {
 
 	window.Resize(fyne.NewSize(windowWidth, windowHeight))
 
-	root := data.Root()
+	// 数据远程优先、失败落回本地。组合来源按次构造：远程整体不可用时，这一次
+	// 加载剩下的文件直接走本地，不会逐个数着超时；下次刷新会重新试一次远程。
+	remote := data.Remote(remoteBaseURL)
+	local := data.Local(data.Root())
 
 	plannerPage := planner.NewPage()
 	inferPage := infer.NewPage()
@@ -80,8 +87,9 @@ func run() {
 	}
 
 	reload := func() {
-		loadPools(root, plannerPage)
-		loadListings(root, listingPage, inferPage)
+		source := data.Fallback(remote, local)
+		loadPools(source, plannerPage)
+		loadListings(source, listingPage, inferPage)
 	}
 	plannerPage.OnRefresh = reload
 
@@ -92,12 +100,12 @@ func run() {
 	window.ShowAndRun()
 }
 
-// loadPools 读取本地盲盒池并推给盲盒规划页。
-func loadPools(root string, plannerPage *planner.Page) {
-	pools, err := pool.LoadPools(root)
+// loadPools 读取盲盒池并推给盲盒规划页。
+func loadPools(source data.Source, plannerPage *planner.Page) {
+	pools, err := pool.LoadPools(source)
 
 	if err != nil {
-		plannerPage.SetStatus(fmt.Sprintf("本地加载失败：%v", err))
+		plannerPage.SetStatus(fmt.Sprintf("数据加载失败：%v", err))
 
 		return
 	}
@@ -106,9 +114,9 @@ func loadPools(root string, plannerPage *planner.Page) {
 	plannerPage.SetPools(pools)
 }
 
-// loadListings 读取本地竞拍清单数据：推给拍品清单页与拍品推测页。
-func loadListings(root string, listingPage *listing.Page, inferPage *infer.Page) {
-	listings, err := bid.LoadListings(root)
+// loadListings 读取竞拍清单数据：推给拍品清单页与拍品推测页。
+func loadListings(source data.Source, listingPage *listing.Page, inferPage *infer.Page) {
+	listings, err := bid.LoadListings(source)
 
 	if err != nil {
 		listingPage.SetStatus(fmt.Sprintf("竞拍数据加载失败：%v", err))

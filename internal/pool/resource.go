@@ -15,14 +15,14 @@ type Resource struct {
 
 // loadResources 读取一个资源文件。路径为空或文件不存在时返回 (nil, nil)，
 // 便于调用方回退到其它资源来源。
-func loadResources(file string) ([]Resource, error) {
-	if file == "" {
+func loadResources(source data.Source, name string) ([]Resource, error) {
+	if name == "" {
 		return nil, nil
 	}
 
 	var resources []Resource
 
-	if err := data.ReadJSON(file, &resources); err != nil {
+	if err := data.ReadJSON(source, name, &resources); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}

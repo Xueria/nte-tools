@@ -1,7 +1,5 @@
 package data
 
-import "path/filepath"
-
 // IndexFile 数据根目录下的索引文件名。各业务域的数据文件由索引显式列出，
 // 加载器不再扫描目录，因此哪些数据生效由数据自己决定。
 const IndexFile = "metadata.json"
@@ -28,11 +26,11 @@ type GlobalFiles struct {
 	Resources string `json:"resources"`
 }
 
-// LoadIndex 读取 directory 下的索引文件。
-func LoadIndex(directory string) (Index, error) {
+// LoadIndex 从来源读取索引文件。
+func LoadIndex(source Source) (Index, error) {
 	var index Index
 
-	if err := ReadJSON(filepath.Join(directory, IndexFile), &index); err != nil {
+	if err := ReadJSON(source, IndexFile, &index); err != nil {
 		return Index{}, err
 	}
 

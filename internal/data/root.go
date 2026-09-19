@@ -1,5 +1,3 @@
-// Package data 定位本地数据根目录，并读取根目录下的索引与 JSON 数据文件。
-// 数据始终是外部文件，不随程序打包。
 package data
 
 import (
@@ -14,7 +12,7 @@ const (
 	LocalDirectory = "data"
 )
 
-// Root 按默认策略定位数据根目录：依次取环境变量、可执行文件同级的 data/、
+// Root 按默认策略定位本地数据根目录：依次取环境变量、可执行文件同级的 data/、
 // 当前工作目录下的 data/，保证从别处启动 exe 时仍能找到随包分发的数据。
 func Root() string {
 	if root := os.Getenv(RootEnv); root != "" {
