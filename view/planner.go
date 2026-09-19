@@ -1,7 +1,7 @@
 package view
 
 import (
-	"blind-tools/model/blindbox"
+	"blind-tools/model/pool"
 	"errors"
 	"fmt"
 	"image/color"
@@ -16,7 +16,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// NewPlanner 构建盲盒规划页：左侧盲盒列表，右侧货币规划。
+// NewPlanner 构建盲盒规划页：左侧盲盒列表，右侧资源规划。
 func NewPlanner() *Planner {
 	v := &Planner{}
 	v.root = v.build()
@@ -28,15 +28,15 @@ func (v *Planner) NewTab() Tab {
 	return Tab{Title: "盲盒规划", Icon: theme.HomeIcon(), Content: v.root}
 }
 
-// Planner holds the mutable UI state of the blind box planner page.
+// Planner holds the mutable UI state of the blind pool planner page.
 type Planner struct {
 	root fyne.CanvasObject
 
-	remoteAll      []blindbox.BlindBox
-	localAll       []blindbox.BlindBox
-	remoteFiltered []blindbox.BlindBox
-	localFiltered  []blindbox.BlindBox
-	selected       *blindbox.BlindBox
+	remoteAll      []pool.Pool
+	localAll       []pool.Pool
+	remoteFiltered []pool.Pool
+	localFiltered  []pool.Pool
+	selected       *pool.Pool
 	selectedNodeID string
 	remoteLoading  bool
 
@@ -46,8 +46,8 @@ type Planner struct {
 	leftPanel   *fyne.Container
 
 	formCard           *widget.Card
-	currencyEntries    []*widget.Entry
-	keepCurrencySelect *widget.Select
+	resourceEntries    []*widget.Entry
+	keepResourceSelect *widget.Select
 	rangeSlider        *RangeSlider
 	rangeLabel         *widget.Label
 	calculateBtn       *widget.Button
@@ -55,7 +55,7 @@ type Planner struct {
 	resultBox    *fyne.Container
 	summaryLabel *widget.Label
 
-	plan             []blindbox.PlanStep
+	plan             []pool.PlanStep
 	insufficient     bool
 	insufficientDraw int
 
@@ -81,7 +81,7 @@ func (v *Planner) build() fyne.CanvasObject {
 	return split
 }
 
-// buildLeft creates the search bar, refresh button and blind box list.
+// buildLeft creates the search bar, refresh button and blind pool list.
 func (v *Planner) buildLeft() fyne.CanvasObject {
 	header := widget.NewLabelWithStyle("盲盒列表", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
@@ -119,7 +119,7 @@ func (v *Planner) buildLeft() fyne.CanvasObject {
 			if branch {
 				return widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 			}
-			return newBlindBoxItem()
+			return newPoolItem()
 		},
 		func(uid widget.TreeNodeID, branch bool, obj fyne.CanvasObject) {
 			if branch {
@@ -137,8 +137,8 @@ func (v *Planner) buildLeft() fyne.CanvasObject {
 				}
 				return
 			}
-			if c, ok := v.boxFor(uid); ok {
-				obj.(*blindBoxItem).set(*c)
+			if p, ok := v.poolFor(uid); ok {
+				obj.(*poolItem).set(*p)
 			}
 		},
 	)
@@ -148,7 +148,7 @@ func (v *Planner) buildLeft() fyne.CanvasObject {
 			v.tree.Unselect(uid)
 			return
 		}
-		v.selectBox(uid)
+		v.selectPool(uid)
 	}
 	v.tree.OpenAllBranches()
 
@@ -176,11 +176,11 @@ func (v *Planner) SetStatus(text string) {
 	}
 }
 
-// buildRight creates the currency form and the result table.
+// buildRight creates the resource form and the result table.
 func (v *Planner) buildRight() fyne.CanvasObject {
 	v.formCard = widget.NewCard("", "", nil)
 
-	v.keepCurrencySelect = widget.NewSelect(nil, nil)
+	v.keepResourceSelect = widget.NewSelect(nil, nil)
 
 	v.rangeSlider = NewRangeSlider(1, 1)
 	v.rangeSlider.Step = 1
@@ -211,15 +211,15 @@ func (v *Planner) buildRight() fyne.CanvasObject {
 func (v *Planner) applyFilter(text string) {
 	query := strings.ToLower(strings.TrimSpace(text))
 
-	v.remoteFiltered = filterBoxes(v.remoteAll, query)
-	v.localFiltered = filterBoxes(v.localAll, query)
+	v.remoteFiltered = filterPools(v.remoteAll, query)
+	v.localFiltered = filterPools(v.localAll, query)
 
 	// Re-resolve the current selection against the filtered lists.
-	keep := (*blindbox.BlindBox)(nil)
+	keep := (*pool.Pool)(nil)
 	keepID := ""
 	if v.selected != nil {
-		if c, ok := v.boxFor(v.selectedNodeID); ok {
-			keep = c
+		if p, ok := v.poolFor(v.selectedNodeID); ok {
+			keep = p
 			keepID = v.selectedNodeID
 		}
 	}
@@ -240,17 +240,17 @@ func (v *Planner) applyFilter(text string) {
 	v.applySelection()
 }
 
-// filterBoxes returns the boxes matching the query by name or id.
-func filterBoxes(boxes []blindbox.BlindBox, query string) []blindbox.BlindBox {
+// filterPools returns the pools matching the query by name or id.
+func filterPools(pools []pool.Pool, query string) []pool.Pool {
 	if query == "" {
-		return append([]blindbox.BlindBox(nil), boxes...)
+		return append([]pool.Pool(nil), pools...)
 	}
 
-	filtered := make([]blindbox.BlindBox, 0, len(boxes))
-	for _, box := range boxes {
-		if strings.Contains(strings.ToLower(box.Manifest.Name), query) ||
-			strings.Contains(strings.ToLower(box.Manifest.ID), query) {
-			filtered = append(filtered, box)
+	filtered := make([]pool.Pool, 0, len(pools))
+	for _, p := range pools {
+		if strings.Contains(strings.ToLower(p.Manifest.Name), query) ||
+			strings.Contains(strings.ToLower(p.Manifest.ID), query) {
+			filtered = append(filtered, p)
 		}
 	}
 	return filtered
@@ -264,20 +264,20 @@ func (v *Planner) sectionLeafIDs(section string) []widget.TreeNodeID {
 	}
 
 	ids := make([]widget.TreeNodeID, len(list))
-	for i, box := range list {
-		ids[i] = widget.TreeNodeID(section + ":" + box.Manifest.ID)
+	for i, p := range list {
+		ids[i] = widget.TreeNodeID(section + ":" + p.Manifest.ID)
 	}
 	return ids
 }
 
-// boxFor resolves a tree leaf node id to its blind box.
-func (v *Planner) boxFor(nodeID string) (*blindbox.BlindBox, bool) {
+// poolFor resolves a tree leaf node id to its blind pool.
+func (v *Planner) poolFor(nodeID string) (*pool.Pool, bool) {
 	section, id, ok := strings.Cut(nodeID, ":")
 	if !ok {
 		return nil, false
 	}
 
-	var list []blindbox.BlindBox
+	var list []pool.Pool
 	switch section {
 	case "remote":
 		list = v.remoteFiltered
@@ -295,15 +295,15 @@ func (v *Planner) boxFor(nodeID string) (*blindbox.BlindBox, bool) {
 	return nil, false
 }
 
-// SetLocalBoxes 用新的本地盲盒替换列表内容并重新过滤。
-func (v *Planner) SetLocalBoxes(boxes []blindbox.BlindBox) {
-	v.localAll = boxes
+// SetLocalPools 用新的本地盲盒池替换列表内容并重新过滤。
+func (v *Planner) SetLocalPools(pools []pool.Pool) {
+	v.localAll = pools
 	v.applyFilter(v.searchEntry.Text)
 }
 
-// SetRemoteBoxes 用新的远程盲盒替换列表内容并重新过滤。
-func (v *Planner) SetRemoteBoxes(boxes []blindbox.BlindBox) {
-	v.remoteAll = boxes
+// SetRemotePools 用新的远程盲盒池替换列表内容并重新过滤。
+func (v *Planner) SetRemotePools(pools []pool.Pool) {
+	v.remoteAll = pools
 	v.applyFilter(v.searchEntry.Text)
 }
 
@@ -313,13 +313,13 @@ func (v *Planner) SetRemoteLoading(loading bool) {
 	v.tree.Refresh()
 }
 
-// selectBox stores the chosen blind box and rebuilds the right panel.
-func (v *Planner) selectBox(nodeID widget.TreeNodeID) {
-	c, ok := v.boxFor(nodeID)
+// selectPool stores the chosen blind pool and rebuilds the right panel.
+func (v *Planner) selectPool(nodeID widget.TreeNodeID) {
+	p, ok := v.poolFor(nodeID)
 	if !ok {
 		return
 	}
-	v.selected = c
+	v.selected = p
 	v.selectedNodeID = nodeID
 	v.applySelection()
 }
@@ -329,43 +329,43 @@ func (v *Planner) applySelection() {
 	v.plan = nil
 	v.insufficient = false
 	v.insufficientDraw = 0
-	v.currencyEntries = nil
+	v.resourceEntries = nil
 	v.rebuildResultTable()
 
 	if v.selected == nil {
-		v.formCard.SetTitle("货币规划")
+		v.formCard.SetTitle("资源规划")
 		v.formCard.SetSubTitle("请选择一个盲盒")
 		v.formCard.SetContent(container.NewCenter(widget.NewLabel("从左侧列表选择一个盲盒开始规划")))
-		v.keepCurrencySelect.Disable()
+		v.keepResourceSelect.Disable()
 		v.rangeSlider.Disable()
 		v.calculateBtn.Disable()
 		v.summaryLabel.SetText("")
 		return
 	}
 
-	c := v.selected
-	v.formCard.SetTitle(c.Manifest.Name)
-	v.formCard.SetSubTitle(fmt.Sprintf("共 %d 抽 · %d 种货币", c.Manifest.Draws, len(c.Currencies)))
+	p := v.selected
+	v.formCard.SetTitle(p.Manifest.Name)
+	v.formCard.SetSubTitle(fmt.Sprintf("共 %d 抽 · %d 种资源", p.Manifest.Draws, len(p.Resources)))
 
-	// Currency quantity inputs.
+	// Resource quantity inputs.
 	form := widget.NewForm()
-	for _, currency := range c.Currencies {
+	for _, resource := range p.Resources {
 		entry := widget.NewEntry()
 		entry.SetPlaceHolder("0")
 		entry.Validator = numericValidator
 		// Don't capture the mouse wheel: keep the panel scrollable over inputs.
 		entry.Wrapping = fyne.TextWrapOff
 		entry.Scroll = fyne.ScrollNone
-		form.Append(currency.Name, entry)
-		v.currencyEntries = append(v.currencyEntries, entry)
+		form.Append(resource.Name, entry)
+		v.resourceEntries = append(v.resourceEntries, entry)
 	}
 
-	currencyTitle := widget.NewLabelWithStyle("货币数量", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	resourceTitle := widget.NewLabelWithStyle("资源数量", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	rangeTitle := widget.NewLabelWithStyle("抽数范围", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	keepTitle := widget.NewLabelWithStyle("优先保留的货币", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	keepTitle := widget.NewLabelWithStyle("优先保留的资源", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	// Draw range slider.
-	draws := c.Manifest.Draws
+	draws := p.Manifest.Draws
 	if draws < 1 {
 		draws = 1
 	}
@@ -378,28 +378,28 @@ func (v *Planner) applySelection() {
 		v.rangeSlider.Enable()
 	}
 
-	// Preferred currency selector. The first option "无" means no preference
+	// Preferred resource selector. The first option "无" means no preference
 	// (just maximise the number of draws).
-	names := make([]string, 0, len(c.Currencies)+1)
+	names := make([]string, 0, len(p.Resources)+1)
 	names = append(names, "无")
-	for _, currency := range c.Currencies {
-		names = append(names, currency.Name)
+	for _, resource := range p.Resources {
+		names = append(names, resource.Name)
 	}
-	v.keepCurrencySelect.SetOptions(names)
-	v.keepCurrencySelect.SetSelectedIndex(0)
-	v.keepCurrencySelect.Enable()
+	v.keepResourceSelect.SetOptions(names)
+	v.keepResourceSelect.SetSelectedIndex(0)
+	v.keepResourceSelect.Enable()
 
 	v.calculateBtn.Enable()
-	v.summaryLabel.SetText("填写货币数量后点击「计算方案」")
+	v.summaryLabel.SetText("填写资源数量后点击「计算方案」")
 
 	content := container.NewVBox(
-		currencyTitle,
+		resourceTitle,
 		form,
 		rangeTitle,
 		v.rangeSlider,
 		v.rangeLabel,
 		keepTitle,
-		v.keepCurrencySelect,
+		v.keepResourceSelect,
 		v.calculateBtn,
 	)
 	v.formCard.SetContent(content)
@@ -411,18 +411,18 @@ func (v *Planner) calculate() {
 		return
 	}
 
-	balances := make(map[string]int, len(v.selected.Currencies))
-	for i, currency := range v.selected.Currencies {
-		text := strings.TrimSpace(v.currencyEntries[i].Text)
+	balances := make(map[string]int, len(v.selected.Resources))
+	for i, resource := range v.selected.Resources {
+		text := strings.TrimSpace(v.resourceEntries[i].Text)
 		if text == "" {
 			text = "0"
 		}
 		amount, err := strconv.Atoi(text)
 		if err != nil || amount < 0 {
-			v.summaryLabel.SetText(fmt.Sprintf("请输入有效的「%s」数量", currency.Name))
+			v.summaryLabel.SetText(fmt.Sprintf("请输入有效的「%s」数量", resource.Name))
 			return
 		}
-		balances[currency.ID] = amount
+		balances[resource.ID] = amount
 	}
 
 	start := int(v.rangeSlider.Lower)
@@ -434,7 +434,7 @@ func (v *Planner) calculate() {
 		end = start
 	}
 
-	result := blindbox.CalculatePlan(*v.selected, start, end, balances, v.preferredCurrencyID())
+	result := pool.CalculatePlan(*v.selected, start, end, balances, v.preferredResourceID())
 
 	v.plan = result.Steps
 	v.insufficient = result.Insufficient
@@ -443,28 +443,28 @@ func (v *Planner) calculate() {
 	v.updateSummary(result)
 }
 
-// preferredCurrencyID resolves the selected "keep more" currency id.
-func (v *Planner) preferredCurrencyID() string {
-	idx := v.keepCurrencySelect.SelectedIndex()
+// preferredResourceID resolves the selected "keep more" resource id.
+func (v *Planner) preferredResourceID() string {
+	idx := v.keepResourceSelect.SelectedIndex()
 	if idx <= 0 { // "无" (or no selection) means no preference
 		return ""
 	}
 	i := idx - 1
-	if i < len(v.selected.Currencies) {
-		return v.selected.Currencies[i].ID
+	if i < len(v.selected.Resources) {
+		return v.selected.Resources[i].ID
 	}
 	return ""
 }
 
 // updateSummary renders final balances and any insufficiency notice.
-func (v *Planner) updateSummary(result blindbox.PlanResult) {
+func (v *Planner) updateSummary(result pool.PlanResult) {
 	parts := make([]string, 0, len(result.Final))
-	for _, id := range blindbox.SortedCurrencyIDs(*v.selected) {
-		parts = append(parts, fmt.Sprintf("%s %d", blindbox.CurrencyName(*v.selected, id), result.Final[id]))
+	for _, id := range pool.SortedResourceIDs(*v.selected) {
+		parts = append(parts, fmt.Sprintf("%s %d", pool.ResourceName(*v.selected, id), result.Final[id]))
 	}
-	summary := "剩余货币：" + strings.Join(parts, "，")
+	summary := "剩余资源：" + strings.Join(parts, "，")
 	if result.Insufficient {
-		summary = fmt.Sprintf("第 %d 抽货币不足，无法继续｜", result.FailAtDraw) + summary
+		summary = fmt.Sprintf("第 %d 抽资源不足，无法继续｜", result.FailAtDraw) + summary
 	}
 	v.summaryLabel.SetText(summary)
 }
@@ -477,7 +477,7 @@ func (v *Planner) rebuildResultTable() {
 	rows := []fyne.CanvasObject{
 		container.NewGridWithColumns(4,
 			resultCell("抽数", true),
-			resultCell("使用货币", true),
+			resultCell("使用资源", true),
 			resultCell("花费", true),
 			resultCell("剩余", true),
 		),
@@ -487,7 +487,7 @@ func (v *Planner) rebuildResultTable() {
 	for _, step := range v.plan {
 		rows = append(rows, container.NewGridWithColumns(4,
 			resultCell(strconv.Itoa(step.Draw), false),
-			resultCell(step.CurrencyName, false),
+			resultCell(step.ResourceName, false),
 			resultCell(strconv.Itoa(step.Cost), false),
 			resultCell(strconv.Itoa(step.Remaining), false),
 		))
@@ -496,7 +496,7 @@ func (v *Planner) rebuildResultTable() {
 	if v.insufficient {
 		rows = append(rows, container.NewGridWithColumns(4,
 			resultCell(strconv.Itoa(v.insufficientDraw), false),
-			resultCell("货币不足", false),
+			resultCell("资源不足", false),
 			resultCell("—", false),
 			resultCell("—", false),
 		))
@@ -524,39 +524,39 @@ func numericValidator(text string) error {
 	return nil
 }
 
-// blindBoxItem is a single row in the blind box list.
-type blindBoxItem struct {
+// poolItem is a single row in the blind pool list.
+type poolItem struct {
 	widget.BaseWidget
 
 	title    string
 	subtitle string
 }
 
-func newBlindBoxItem() fyne.CanvasObject {
-	item := &blindBoxItem{}
+func newPoolItem() fyne.CanvasObject {
+	item := &poolItem{}
 	item.ExtendBaseWidget(item)
 	return item
 }
 
-func (b *blindBoxItem) set(box blindbox.BlindBox) {
-	b.title = box.Manifest.Name
-	b.subtitle = fmt.Sprintf("%d 抽 · %d 种货币", box.Manifest.Draws, len(box.Currencies))
+func (b *poolItem) set(p pool.Pool) {
+	b.title = p.Manifest.Name
+	b.subtitle = fmt.Sprintf("%d 抽 · %d 种资源", p.Manifest.Draws, len(p.Resources))
 	b.Refresh()
 }
 
 // MinSize returns the minimum size of the item.
-func (b *blindBoxItem) MinSize() fyne.Size {
+func (b *poolItem) MinSize() fyne.Size {
 	b.ExtendBaseWidget(b)
 	return b.BaseWidget.MinSize()
 }
 
 // CreateRenderer creates the canvas objects for the item.
-func (b *blindBoxItem) CreateRenderer() fyne.WidgetRenderer {
+func (b *poolItem) CreateRenderer() fyne.WidgetRenderer {
 	title := canvas.NewText(b.title, color.White)
 	title.TextStyle = fyne.TextStyle{Bold: true}
 	subtitle := canvas.NewText(b.subtitle, color.White)
 
-	r := &blindBoxItemRenderer{
+	r := &poolItemRenderer{
 		baseRenderer: baseRenderer{objects: []fyne.CanvasObject{title, subtitle}},
 		title:        title,
 		subtitle:     subtitle,
@@ -566,15 +566,15 @@ func (b *blindBoxItem) CreateRenderer() fyne.WidgetRenderer {
 	return r
 }
 
-type blindBoxItemRenderer struct {
+type poolItemRenderer struct {
 	baseRenderer
 
 	title    *canvas.Text
 	subtitle *canvas.Text
-	item     *blindBoxItem
+	item     *poolItem
 }
 
-func (r *blindBoxItemRenderer) Refresh() {
+func (r *poolItemRenderer) Refresh() {
 	th := r.item.Theme()
 	v := fyne.CurrentApp().Settings().ThemeVariant()
 
@@ -586,7 +586,7 @@ func (r *blindBoxItemRenderer) Refresh() {
 	canvas.Refresh(r.item)
 }
 
-func (r *blindBoxItemRenderer) Layout(size fyne.Size) {
+func (r *poolItemRenderer) Layout(size fyne.Size) {
 	pad := r.item.Theme().Size(theme.SizeNamePadding)
 	titleHeight := r.title.MinSize().Height
 
@@ -596,7 +596,7 @@ func (r *blindBoxItemRenderer) Layout(size fyne.Size) {
 	r.subtitle.Resize(fyne.NewSize(size.Width-pad*2, r.subtitle.MinSize().Height))
 }
 
-func (r *blindBoxItemRenderer) MinSize() fyne.Size {
+func (r *poolItemRenderer) MinSize() fyne.Size {
 	pad := r.item.Theme().Size(theme.SizeNamePadding)
 	height := r.title.MinSize().Height + r.subtitle.MinSize().Height + pad*3
 	return fyne.NewSize(r.title.MinSize().Width+pad*2, height)

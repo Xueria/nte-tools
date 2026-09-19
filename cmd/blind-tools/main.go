@@ -62,8 +62,8 @@ func setupMainWindowAndRun() {
 	)
 
 	reload := func() {
-		loadLocalBoxes(data, planner)
-		loadRemoteBoxes(data, planner)
+		loadLocalPools(data, planner)
+		loadRemotePools(data, planner)
 
 		loadBidListings(data, items, bidPage)
 	}
@@ -90,24 +90,24 @@ func setupMainWindowAndRun() {
 	window.ShowAndRun()
 }
 
-// loadLocalBoxes 读取本地盲盒并推给盲盒规划页。
-func loadLocalBoxes(data *store.Store, planner *view.Planner) {
-	boxes, err := data.LocalBoxes()
+// loadLocalPools 读取本地盲盒池并推给盲盒规划页。
+func loadLocalPools(data *store.Store, planner *view.Planner) {
+	pools, err := data.LocalPools()
 	if err != nil {
 		planner.SetStatus(fmt.Sprintf("本地加载失败：%v", err))
 		return
 	}
 
 	planner.SetStatus("")
-	planner.SetLocalBoxes(boxes)
+	planner.SetLocalPools(pools)
 }
 
-// loadRemoteBoxes 在后台读取远程盲盒，完成后回到 UI 线程推给盲盒规划页。
-func loadRemoteBoxes(data *store.Store, planner *view.Planner) {
+// loadRemotePools 在后台读取远程盲盒池，完成后回到 UI 线程推给盲盒规划页。
+func loadRemotePools(data *store.Store, planner *view.Planner) {
 	planner.SetRemoteLoading(true)
 
 	go func() {
-		boxes, err := data.RemoteBoxes()
+		pools, err := data.RemotePools()
 
 		fyne.Do(func() {
 			planner.SetRemoteLoading(false)
@@ -117,7 +117,7 @@ func loadRemoteBoxes(data *store.Store, planner *view.Planner) {
 				return
 			}
 
-			planner.SetRemoteBoxes(boxes)
+			planner.SetRemotePools(pools)
 		})
 	}()
 }

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"blind-tools/model/bid"
-	"blind-tools/model/blindbox"
+	"blind-tools/model/pool"
 )
 
 const (
@@ -16,10 +16,8 @@ const (
 	DataRootEnv = "BLIND_TOOLS_DATA"
 	// LocalDirectory 数据根目录名，相对可执行文件或当前工作目录。
 	LocalDirectory = "data"
-	// BidDirectory 竞拍清单数据在数据根下的子目录名。
-	BidDirectory = "bid"
-	// DefaultRemoteBaseURL 远程数据目录：必须是 raw.githubusercontent.com
-	// 路径，且结构与本地数据目录一致。
+	// DefaultRemoteBaseURL 远程数据根目录：必须是 raw.githubusercontent.com
+	// 路径，且结构与本地数据根一致。
 	DefaultRemoteBaseURL = "https://raw.githubusercontent.com/Xueria/blind-tools/refs/heads/master/data"
 )
 
@@ -38,19 +36,19 @@ func New() *Store {
 	}
 }
 
-// LocalBoxes 读取本地盲盒数据。
-func (s *Store) LocalBoxes() ([]blindbox.BlindBox, error) {
-	return blindbox.LoadLocalBoxes(s.localRoot)
+// LocalPools 读取本地盲盒池数据。
+func (s *Store) LocalPools() ([]pool.Pool, error) {
+	return pool.LoadLocalPools(s.localRoot)
 }
 
-// RemoteBoxes 读取远程盲盒数据。
-func (s *Store) RemoteBoxes() ([]blindbox.BlindBox, error) {
-	return blindbox.LoadRemoteBoxes(s.remoteBase)
+// RemotePools 读取远程盲盒池数据。
+func (s *Store) RemotePools() ([]pool.Pool, error) {
+	return pool.LoadRemotePools(s.remoteBase)
 }
 
 // BidListings 读取本地竞拍清单数据。
 func (s *Store) BidListings() ([]bid.Listing, error) {
-	return bid.LoadListings(filepath.Join(s.localRoot, BidDirectory))
+	return bid.LoadListings(s.localRoot)
 }
 
 // resolveLocalRoot 定位数据根目录：显式环境变量优先，其次可执行文件同级，

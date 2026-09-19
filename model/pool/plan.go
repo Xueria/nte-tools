@@ -1,4 +1,4 @@
-package blindbox
+package pool
 
 import (
 	"maps"
@@ -9,16 +9,16 @@ import (
 // PlanStep describes how a single draw is paid.
 type PlanStep struct {
 	Draw         int
-	CurrencyID   string
-	CurrencyName string
+	ResourceID   string
+	ResourceName string
 	Cost         int
-	Remaining    int // remaining amount of the spent currency after this draw
+	Remaining    int // remaining amount of the spent resource after this draw
 }
 
 // PlanResult is the outcome of calculating a spending plan.
 type PlanResult struct {
 	Steps        []PlanStep
-	Final        map[string]int // final balance for every currency
+	Final        map[string]int // final balance for every resource
 	Insufficient bool
 	FailAtDraw   int
 }
@@ -27,15 +27,15 @@ type PlanResult struct {
 // range [start, end], using the following lexicographic objective:
 //
 //  1. maximise the number of completed draws;
-//  2. minimise spending of the preferred currency (when preferredID != "");
-//  3. minimise the imbalance between the remaining fractions of each currency.
+//  2. minimise spending of the preferred resource (when preferredID != "");
+//  3. minimise the imbalance between the remaining fractions of each resource.
 //
-// Because the number of draws is small, it enumerates every currency assignment
-// (each draw independently chooses one of its accepted currencies) and keeps
+// Because the number of draws is small, it enumerates every resource assignment
+// (each draw independently chooses one of its accepted resources) and keeps
 // the best one, which is guaranteed to be optimal.
-func CalculatePlan(box BlindBox, start, end int, balances map[string]int, preferredID string) PlanResult {
-	costs := buildCostLookup(box)
-	order := currencyOrder(box)
+func CalculatePlan(p Pool, start, end int, balances map[string]int, preferredID string) PlanResult {
+	costs := buildCostLookup(p)
+	order := resourceOrder(p)
 
 	// Effective draws: only those with at least one payment option. A draw with
 	// no option (missing/empty price) cannot be paid, so the plan stops before it.
@@ -72,7 +72,7 @@ func CalculatePlan(box BlindBox, start, end int, balances map[string]int, prefer
 			}
 			return
 		}
-		for _, id := range drawCurrencies(draws[idx], costs, order) {
+		for _, id := range drawResources(draws[idx], costs, order) {
 			choices[idx] = id
 			search(idx + 1)
 		}
@@ -86,8 +86,8 @@ func CalculatePlan(box BlindBox, start, end int, balances map[string]int, prefer
 		res.Final[id] -= cost
 		res.Steps = append(res.Steps, PlanStep{
 			Draw:         draws[i],
-			CurrencyID:   id,
-			CurrencyName: CurrencyName(box, id),
+			ResourceID:   id,
+			ResourceName: ResourceName(p, id),
 			Cost:         cost,
 			Remaining:    res.Final[id],
 		})
@@ -104,7 +104,7 @@ func CalculatePlan(box BlindBox, start, end int, balances map[string]int, prefer
 	return res
 }
 
-// candidate is the score of a single currency assignment.
+// candidate is the score of a single resource assignment.
 type candidate struct {
 	completed      int
 	preferredSpent int
@@ -151,7 +151,7 @@ func evaluateCandidate(draws []int, choices []string, costs map[int]map[string]i
 }
 
 // imbalanceOf measures how unbalanced the leftover amounts are across all
-// currencies, as a value in [0, 1] (0 = all currencies left with the same
+// resources, as a value in [0, 1] (0 = all resources left with the same
 // fraction of their original balance).
 func imbalanceOf(balances, spent map[string]int) float64 {
 	minFrac := math.MaxFloat64
@@ -177,9 +177,9 @@ func imbalanceOf(balances, spent map[string]int) float64 {
 }
 
 // buildCostLookup maps a draw number (1 based) to its cost table.
-func buildCostLookup(box BlindBox) map[int]map[string]int {
-	costs := make(map[int]map[string]int, len(box.Manifest.Prices))
-	for _, price := range box.Manifest.Prices {
+func buildCostLookup(p Pool) map[int]map[string]int {
+	costs := make(map[int]map[string]int, len(p.Manifest.Prices))
+	for _, price := range p.Manifest.Prices {
 		table := make(map[string]int, len(price.Cost))
 		maps.Copy(table, price.Cost)
 		costs[price.Draw] = table
@@ -187,18 +187,18 @@ func buildCostLookup(box BlindBox) map[int]map[string]int {
 	return costs
 }
 
-// currencyOrder returns every currency id in a deterministic order: the
-// declared box currencies first, then any cost-table keys that are not
-// declared currencies.
-func currencyOrder(box BlindBox) []string {
-	seen := make(map[string]bool, len(box.Currencies)+1)
-	order := make([]string, 0, len(box.Currencies)+1)
+// resourceOrder returns every resource id in a deterministic order: the
+// declared pool resources first, then any cost-table keys that are not
+// declared resources.
+func resourceOrder(p Pool) []string {
+	seen := make(map[string]bool, len(p.Resources)+1)
+	order := make([]string, 0, len(p.Resources)+1)
 
-	for _, currency := range box.Currencies {
-		order = append(order, currency.ID)
-		seen[currency.ID] = true
+	for _, resource := range p.Resources {
+		order = append(order, resource.ID)
+		seen[resource.ID] = true
 	}
-	for _, price := range box.Manifest.Prices {
+	for _, price := range p.Manifest.Prices {
 		for id := range price.Cost {
 			if !seen[id] {
 				order = append(order, id)
@@ -209,8 +209,8 @@ func currencyOrder(box BlindBox) []string {
 	return order
 }
 
-// drawCurrencies returns the currencies accepted by a draw, in the given order.
-func drawCurrencies(draw int, costs map[int]map[string]int, order []string) []string {
+// drawResources returns the resources accepted by a draw, in the given order.
+func drawResources(draw int, costs map[int]map[string]int, order []string) []string {
 	table := costs[draw]
 	result := make([]string, 0, len(table))
 	for _, id := range order {
@@ -221,22 +221,22 @@ func drawCurrencies(draw int, costs map[int]map[string]int, order []string) []st
 	return result
 }
 
-// CurrencyName resolves a currency ID to its display name.
-func CurrencyName(box BlindBox, id string) string {
-	for _, currency := range box.Currencies {
-		if currency.ID == id {
-			return currency.Name
+// ResourceName resolves a resource ID to its display name.
+func ResourceName(p Pool, id string) string {
+	for _, resource := range p.Resources {
+		if resource.ID == id {
+			return resource.Name
 		}
 	}
 	return id
 }
 
-// SortedCurrencyIDs returns the box currency IDs in a stable order, used to
+// SortedResourceIDs returns the pool resource IDs in a stable order, used to
 // present final balances consistently.
-func SortedCurrencyIDs(box BlindBox) []string {
-	ids := make([]string, 0, len(box.Currencies))
-	for _, currency := range box.Currencies {
-		ids = append(ids, currency.ID)
+func SortedResourceIDs(p Pool) []string {
+	ids := make([]string, 0, len(p.Resources))
+	for _, resource := range p.Resources {
+		ids = append(ids, resource.ID)
 	}
 	sort.Strings(ids)
 	return ids
