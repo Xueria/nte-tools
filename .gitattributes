@@ -1,0 +1,2 @@
+# Go 源码统一用 LF 换行：gofmt 会把 CRLF 视为未格式化。
+*.go text eol=lf
