@@ -4,6 +4,8 @@ interface File {
 
     fun filename(): String
 
+    fun extension(): String
+
     fun readText(): String
 
 }

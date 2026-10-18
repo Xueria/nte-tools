@@ -3,6 +3,7 @@ package dev.xueria.nte.tools.language
 import androidx.compose.runtime.mutableStateMapOf
 import dev.xueria.nte.tools.Res
 import dev.xueria.nte.tools.json.GlobalJson
+import dev.xueria.nte.tools.json.JsonFileExtension
 import dev.xueria.nte.tools.platform.files
 
 fun translate(translateKey: TranslateKey, defaultText: String? = null): String {
@@ -41,7 +42,7 @@ object LanguageManager {
         }
 
         files.filter {
-            it.filename().endsWith(".json", ignoreCase = true)
+            it.extension().equals(JsonFileExtension, ignoreCase = true)
         }.forEach { file ->
             val text = file.readText()
             val language = GlobalJson.decodeFromString<Language>(text)
