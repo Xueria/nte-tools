@@ -11,6 +11,8 @@ fun translate(translateKey: TranslateKey, defaultText: String? = null): String {
 
 object LanguageManager {
 
+    const val LanguageExternalFold = "language"
+
     val languages = mutableStateMapOf<String, Language>()
 
     private val internals = arrayOf(
@@ -32,13 +34,15 @@ object LanguageManager {
     }
 
     private fun loadExternal() {
-        val files = files("language")
+        val files = files(LanguageExternalFold)
 
         if (files.isEmpty()) {
             return
         }
 
-        files.forEach { file ->
+        files.filter {
+            it.filename().endsWith(".json", ignoreCase = true)
+        }.forEach { file ->
             val text = file.readText()
             val language = GlobalJson.decodeFromString<Language>(text)
             languages[language.locale] = language
