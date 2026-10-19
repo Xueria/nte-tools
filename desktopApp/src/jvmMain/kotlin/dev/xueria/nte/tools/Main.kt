@@ -10,6 +10,6 @@ fun main() = application {
         title = "nte-music",
         icon = painterResource(Res.drawable.windows)
     ) {
-        MainScreen()
+        Application()
     }
 }

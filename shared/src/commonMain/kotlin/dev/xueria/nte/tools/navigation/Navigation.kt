@@ -19,24 +19,3 @@ data class NavigationItem(
     val descriptionTranslateKey = TranslateKey("navigation").dot(id).dot("description")
 
 }
-
-object Navigation {
-
-    val items = listOf(
-        NavigationItem(
-            id = "music_player",
-            label = "Music Player",
-            title = "MusicPlayer",
-            description = "you",
-            icon = NavigationIcon.MusicPlayer
-        ),
-        NavigationItem(
-            id = "ccb",
-            label = "Lazy",
-            title = "Lazy",
-            description = "sss",
-            icon = NavigationIcon.MusicPlayer
-        )
-    )
-
-}

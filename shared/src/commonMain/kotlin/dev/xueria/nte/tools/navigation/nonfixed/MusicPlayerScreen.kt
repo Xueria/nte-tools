@@ -1,4 +1,4 @@
-package dev.xueria.nte.tools.navigation
+package dev.xueria.nte.tools.navigation.nonfixed
 
 import androidx.compose.runtime.Composable
 import dev.xueria.nte.tools.screen.Destination

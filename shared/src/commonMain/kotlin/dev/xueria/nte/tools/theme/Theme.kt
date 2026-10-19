@@ -1,19 +1,21 @@
 package dev.xueria.nte.tools.theme
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import dev.xueria.nte.tools.theme.color.pink.PinkDarkScheme
+import dev.xueria.nte.tools.theme.color.pink.PinkLightScheme
 
-object Colors {
+@Composable
+fun Theme(
+    isDarkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
 
-    val SidebarBackground = Color(0xFFF0EFF4)
-    val ContentBackground = Color(0xFFFCFCFD)
+    val colorScheme = if (isDarkTheme) PinkDarkScheme else PinkLightScheme
 
-}
-
-object Dimens {
-
-    val SidebarWidth = 120.dp
-    val SidebarHorizontalPadding = 8.dp
-    val SidebarVerticalPadding = 14.dp
-
+    MaterialTheme(
+        colorScheme = colorScheme,
+        content = content
+    )
 }
