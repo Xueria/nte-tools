@@ -10,6 +10,7 @@ object Dimens {
     val SidebarVerticalPadding: Dp = 14.dp
 
     val NavigationItemRadius: Dp = 10.dp
+    val NavigationItemSpacing: Dp = 8.dp
     val NavigationItemHorizontalPadding: Dp = 10.dp
     val NavigationItemVerticalPadding: Dp = 6.dp
     val NavigationIconTileSize: Dp = 24.dp
