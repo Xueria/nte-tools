@@ -45,7 +45,7 @@ fun Sidebar(
                     )
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Dimens.NavigationItemSpacing)
+                verticalArrangement = Arrangement.spacedBy(Dimens.Sidebar.ItemSpacing)
             ) {
                 destinations.forEach { destination ->
                     SidebarItem(
@@ -70,7 +70,7 @@ fun Sidebar(
                         vertical = Dimens.Sidebar.BottomVerticalPadding
                     ),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Dimens.NavigationItemSpacing)
+                verticalArrangement = Arrangement.spacedBy(Dimens.Sidebar.ItemSpacing)
             ) {
                 bottomContent()
             }

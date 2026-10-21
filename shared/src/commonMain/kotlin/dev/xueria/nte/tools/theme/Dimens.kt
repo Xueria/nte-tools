@@ -12,14 +12,12 @@ object Dimens {
         val VerticalPadding: Dp = 12.dp
         val BottomVerticalPadding: Dp = 8.dp
 
+        val ItemBackgroundRadius: Dp = 10.dp
+        val ItemSpacing: Dp = 5.dp
+        val ItemHorizontalPadding: Dp = 10.dp
+        val ItemVerticalPadding: Dp = 6.dp
+        val ItemIconSize: Dp = 24.dp
+        val ItemLabelSpacing: Dp = 6.dp
     }
-
-    val NavigationItemRadius: Dp = 10.dp
-    val NavigationItemSpacing: Dp = 5.dp
-    val NavigationItemHorizontalPadding: Dp = 10.dp
-    val NavigationItemVerticalPadding: Dp = 6.dp
-    val NavigationIconTileSize: Dp = 24.dp
-    val NavigationLabelSpacing: Dp = 6.dp
-
 
 }

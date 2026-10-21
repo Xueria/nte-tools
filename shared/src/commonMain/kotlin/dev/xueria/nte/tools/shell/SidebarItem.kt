@@ -39,7 +39,7 @@ fun SidebarItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Dimens.NavigationItemRadius))
+            .clip(RoundedCornerShape(Dimens.Sidebar.ItemBackgroundRadius))
             .background(rowColor)
             .selectable(
                 selected = selected,
@@ -47,14 +47,14 @@ fun SidebarItem(
                 role = Role.Tab
             )
             .padding(
-                horizontal = Dimens.NavigationItemHorizontalPadding,
-                vertical = Dimens.NavigationItemVerticalPadding
+                horizontal = Dimens.Sidebar.ItemHorizontalPadding,
+                vertical = Dimens.Sidebar.ItemVerticalPadding
             ),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Dimens.NavigationLabelSpacing)
+        horizontalArrangement = Arrangement.spacedBy(Dimens.Sidebar.ItemLabelSpacing)
     ) {
         Box(
-            modifier = Modifier.size(Dimens.NavigationIconTileSize),
+            modifier = Modifier.size(Dimens.Sidebar.ItemIconSize),
             contentAlignment = Alignment.Center,
         ) {
             IconSelector(destination = destination, tint = iconColor)
