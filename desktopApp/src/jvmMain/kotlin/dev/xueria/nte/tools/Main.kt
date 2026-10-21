@@ -11,7 +11,7 @@ fun main() {
         Window(
             onCloseRequest = ::exitApplication,
             title = Translate.Application.name(),
-            icon = painterResource(Res.drawable.windows)
+            icon = painterResource(Res.drawable.ic_logo)
         ) {
             ApplicationContent()
         }

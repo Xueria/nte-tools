@@ -3,13 +3,12 @@
   "name": "English",
   "messages": {
     "app.name": "NTE Tools",
-
     "navigation.music_player.label": "MusicPlayer",
     "navigation.music_player.title": "Music Player",
     "navigation.music_player.description": "Music Player Description",
-
-    "navigation.dummy.label": "Dummy",
-    "navigation.dummy.title": "Dummy Title",
-    "navigation.dummy.description": "Dummy Description"
+    "navigation.setting.label": "Setting",
+    "navigation.setting.title": "Setting",
+    "navigation.setting.description": "App Setting",
+    "settings.language": "Language"
   }
 }

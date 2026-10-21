@@ -1,6 +1,6 @@
 package dev.xueria.nte.tools.language
 
-import dev.xueria.nte.tools.navigation.NavigationItem
+import dev.xueria.nte.tools.shell.Destination
 
 typealias TranslateKey = String
 
@@ -22,16 +22,16 @@ object Translate {
 
     object Navigation {
 
-        fun label(item: NavigationItem): String {
-            return translate("navigation.${item.id}.label", item.label)
+        fun label(destination: Destination): String {
+            return translate("navigation.${destination.id}.label", destination.label)
         }
 
-        fun title(item: NavigationItem): String {
-            return translate("navigation.${item.id}.title", item.title)
+        fun title(destination: Destination): String {
+            return translate("navigation.${destination.id}.title", destination.title)
         }
 
-        fun description(item: NavigationItem): String {
-            return translate("navigation.${item.id}.description", item.description)
+        fun description(destination: Destination): String {
+            return translate("navigation.${destination.id}.description", destination.description)
         }
 
 

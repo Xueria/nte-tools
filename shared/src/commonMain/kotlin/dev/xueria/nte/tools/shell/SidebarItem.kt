@@ -1,4 +1,4 @@
-package dev.xueria.nte.tools.navigation
+package dev.xueria.nte.tools.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -23,8 +23,8 @@ import dev.xueria.nte.tools.language.Translate
 import dev.xueria.nte.tools.theme.Dimens
 
 @Composable
-fun NavigationSidebarItem(
-    item: NavigationItem,
+fun SidebarItem(
+    destination: Destination,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -57,24 +57,15 @@ fun NavigationSidebarItem(
             modifier = Modifier.size(Dimens.NavigationIconTileSize),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = item.icon.placeholderGlyph(),
-                color = iconColor,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+            IconSelector(destination = destination, tint = iconColor)
         }
 
         Text(
-            text = Translate.Navigation.label(item),
+            text = Translate.Navigation.label(destination),
             color = labelColor,
             fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
         )
     }
-}
-
-fun NavigationIcon.placeholderGlyph(): String = when (this) {
-    NavigationIcon.MusicPlayer -> "音乐"
 }

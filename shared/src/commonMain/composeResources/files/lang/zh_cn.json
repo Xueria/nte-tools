@@ -6,8 +6,9 @@
     "navigation.music_player.label": "音乐演奏",
     "navigation.music_player.title": "音乐演奏",
     "navigation.music_player.description": "Music Player Description",
-    "navigation.dummy.label": "模仿",
-    "navigation.dummy.title": "Dummy Title",
-    "navigation.dummy.description": "Dummy Description"
+    "navigation.setting.label": "设置",
+    "navigation.setting.title": "设置",
+    "navigation.setting.description": "应用设置",
+    "settings.language": "语言"
   }
 }
