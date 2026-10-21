@@ -31,7 +31,7 @@ object Translate {
         }
 
         fun description(item: NavigationItem): String {
-            return translate("navigation.${item.description}.description", item.description)
+            return translate("navigation.${item.id}.description", item.description)
         }
 
 
