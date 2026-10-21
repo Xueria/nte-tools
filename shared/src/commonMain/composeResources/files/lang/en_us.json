@@ -1,6 +1,15 @@
 {
-  "locale": "en-us",
+  "locale": "en_us",
   "name": "English",
   "messages": {
+    "app.name": "NTE Tools",
+
+    "navigation.music_player.label": "MusicPlayer",
+    "navigation.music_player.title": "Music Player",
+    "navigation.music_player.description": "Music Player Description",
+
+    "navigation.dummy.label": "Dummy",
+    "navigation.dummy.title": "Dummy Title",
+    "navigation.dummy.description": "Dummy Description"
   }
 }

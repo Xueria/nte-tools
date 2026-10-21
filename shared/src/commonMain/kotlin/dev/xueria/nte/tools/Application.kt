@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.xueria.nte.tools.language.LanguageManager
+import dev.xueria.nte.tools.language.Translate
 import dev.xueria.nte.tools.navigation.MusicPlayer
 import dev.xueria.nte.tools.navigation.NavigationItem
 import dev.xueria.nte.tools.navigation.NavigationItems
@@ -94,13 +95,13 @@ fun MainScreen() {
                     .padding(32.dp)
             ) {
                 Text(
-                    text = selectedItem.title,
+                    text = Translate.Navigation.title(selectedItem),
                     maxLines = 1,
                     style = MaterialTheme.typography.headlineMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = selectedItem.description,
+                    text = Translate.Navigation.description(selectedItem),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

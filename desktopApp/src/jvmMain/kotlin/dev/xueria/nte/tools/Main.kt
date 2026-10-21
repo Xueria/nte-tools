@@ -2,6 +2,7 @@ package dev.xueria.nte.tools
 
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import dev.xueria.nte.tools.language.Translate
 import org.jetbrains.compose.resources.painterResource
 
 fun main() {
@@ -9,7 +10,7 @@ fun main() {
     application {
         Window(
             onCloseRequest = ::exitApplication,
-            title = "nte-music",
+            title = Translate.Application.name(),
             icon = painterResource(Res.drawable.windows)
         ) {
             ApplicationContent()

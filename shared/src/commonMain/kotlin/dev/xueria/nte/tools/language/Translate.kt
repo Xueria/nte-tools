@@ -1,53 +1,40 @@
 package dev.xueria.nte.tools.language
 
-import androidx.compose.runtime.mutableStateMapOf
-import dev.xueria.nte.tools.Res
-import dev.xueria.nte.tools.json.GlobalJson
-import dev.xueria.nte.tools.json.JsonFileExtension
-import dev.xueria.nte.tools.platform.files
+import dev.xueria.nte.tools.navigation.NavigationItem
+
+typealias TranslateKey = String
 
 fun translate(translateKey: TranslateKey, defaultText: String? = null): String {
-    return defaultText ?: translateKey.toReadableName()
+    val fallback = translateKey.split(".", "_")
+        .joinToString("") { part ->
+            part.replaceFirstChar { it.uppercase() }
+        }
+    return LanguageManager.translate(translateKey) ?: defaultText ?: fallback
 }
 
-object LanguageManager {
+object Translate {
 
-    const val LanguageExternalFold = "language"
+    object Application {
 
-    val languages = mutableStateMapOf<String, Language>()
+        fun name() = translate("app.name", "Application")
 
-    private val internals = arrayOf(
-        "en_us", "zh_cn"
-    )
-
-    suspend fun loadAll() {
-        loadInternal()
-        loadExternal()
     }
 
-    private suspend fun loadInternal() {
-        for (filename in internals) {
-            val bytes = Res.readBytes("files/lang/$filename.json")
-            val text = bytes.decodeToString()
-            val language = GlobalJson.decodeFromString<Language>(text)
-            languages[language.locale] = language
-        }
-    }
+    object Navigation {
 
-    private fun loadExternal() {
-        val files = files(LanguageExternalFold)
-
-        if (files.isEmpty()) {
-            return
+        fun label(item: NavigationItem): String {
+            return translate("navigation.${item.id}.label", item.label)
         }
 
-        files.filter {
-            it.extension().equals(JsonFileExtension, ignoreCase = true)
-        }.forEach { file ->
-            val text = file.readText()
-            val language = GlobalJson.decodeFromString<Language>(text)
-            languages[language.locale] = language
+        fun title(item: NavigationItem): String {
+            return translate("navigation.${item.id}.title", item.title)
         }
+
+        fun description(item: NavigationItem): String {
+            return translate("navigation.${item.description}.description", item.description)
+        }
+
+
     }
 
 }

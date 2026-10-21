@@ -1,6 +1,13 @@
 {
-  "locale": "zh-cn",
+  "locale": "zh_cn",
   "name": "中文",
   "messages": {
+    "app.name": "异环工具箱",
+    "navigation.music_player.label": "音乐演奏",
+    "navigation.music_player.title": "音乐演奏",
+    "navigation.music_player.description": "Music Player Description",
+    "navigation.dummy.label": "模仿",
+    "navigation.dummy.title": "Dummy Title",
+    "navigation.dummy.description": "Dummy Description"
   }
 }

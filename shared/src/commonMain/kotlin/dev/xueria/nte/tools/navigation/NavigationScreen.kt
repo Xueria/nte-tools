@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import dev.xueria.nte.tools.language.Translate
 import dev.xueria.nte.tools.theme.Dimens
 
 @Composable
@@ -65,7 +66,7 @@ fun NavigationSidebarItem(
         }
 
         Text(
-            text = item.label,
+            text = Translate.Navigation.label(item),
             color = labelColor,
             fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
