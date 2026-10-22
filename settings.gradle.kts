@@ -32,6 +32,3 @@ plugins {
 }
 
 rootProject.name = "nte-tools"
-
-include(":desktopApp")
-include(":shared")

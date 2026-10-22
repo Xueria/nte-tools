@@ -1,4 +1,4 @@
-package dev.xueria.nte.tools.data
+package dev.xueria.nte.tools.music
 
 import kotlinx.serialization.Serializable
 

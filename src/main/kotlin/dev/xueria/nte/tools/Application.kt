@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import dev.xueria.nte.tools.language.LanguageManager
+import dev.xueria.nte.tools.platform.RunningPath
 import dev.xueria.nte.tools.shell.Destination
 import dev.xueria.nte.tools.shell.DestinationPane
 import dev.xueria.nte.tools.shell.MainDestinations

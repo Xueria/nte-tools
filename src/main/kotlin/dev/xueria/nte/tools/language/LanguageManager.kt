@@ -3,12 +3,12 @@ package dev.xueria.nte.tools.language
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import dev.xueria.nte.tools.Res
+import dev.xueria.nte.tools.file.FileSystem
 import dev.xueria.nte.tools.json.GlobalJson
 import dev.xueria.nte.tools.json.JsonFileExtension
-import dev.xueria.nte.tools.platform.files
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 object LanguageManager {
@@ -46,10 +46,11 @@ object LanguageManager {
 
     private suspend fun loadExternalLanguages(): List<Language> {
         return withContext(Dispatchers.Default) {
-            files(EXTERNAL_LANGUAGE_FOLDER)
+            FileSystem.External.files(EXTERNAL_LANGUAGE_FOLDER)
                 .filter { file -> file.extension().equals(JsonFileExtension, true) }
                 .map { file ->
-                    decodeLanguage(file.readText())
+                    val src = file.readBytes().first().decodeToString()
+                    decodeLanguage(src)
                 }
         }
     }
@@ -57,7 +58,9 @@ object LanguageManager {
     private suspend fun loadInternal(filename: String): Language? {
         val path = "files/lang/$filename.json"
         return try {
-            decodeLanguage(Res.readBytes(path).decodeToString())
+            val file = FileSystem.Internal.file(path)
+            val src = file.readBytes().first().decodeToString()
+            decodeLanguage(src)
         } catch (exception: CancellationException) {
             throw exception
         } catch (_: Exception) {
