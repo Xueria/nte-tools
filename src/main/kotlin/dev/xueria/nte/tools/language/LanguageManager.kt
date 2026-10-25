@@ -17,28 +17,24 @@ object LanguageManager {
     private const val DEFAULT_LOCALE = "zh_cn"
 
     private val internals = arrayOf(
-        "en_us", "zh_cn"
+        "zh_cn", "en_us"
     )
 
-    var languages by mutableStateOf<Map<String, Language>>(emptyMap())
+    var languages: Map<String, Language> by mutableStateOf(emptyMap())
         private set
 
-    var language by mutableStateOf<Language?>(null)
+    var language: Language by mutableStateOf(Language.None)
         private set
 
     fun changeLanguage(locale: String) {
         language = languages[locale] ?: language
     }
 
-    fun translate(translateKey: TranslateKey): String? {
-        return language?.messages?.get(translateKey)
-    }
-
     suspend fun loadAll() {
         val catalog = (loadInternalLanguages() + loadExternalLanguages())
-            .associateBy { language -> language.locale }
+            .associateBy { language -> language.locale() }
         languages = catalog
-        changeLanguage(DEFAULT_LOCALE)
+        language = catalog[DEFAULT_LOCALE] ?: catalog.values.firstOrNull() ?: Language.None
     }
 
     private suspend fun loadInternalLanguages(): List<Language> =
@@ -69,6 +65,6 @@ object LanguageManager {
     }
 
     private fun decodeLanguage(src: String): Language =
-        GlobalJson.decodeFromString<Language>(src)
+        GlobalJson.decodeFromString<Language.Default>(src)
 
 }

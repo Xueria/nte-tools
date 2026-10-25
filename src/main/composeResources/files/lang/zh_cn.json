@@ -9,6 +9,19 @@
     "navigation.setting.label": "设置",
     "navigation.setting.title": "设置",
     "navigation.setting.description": "应用设置",
-    "settings.language": "语言"
+    "settings.language": "语言",
+    "music_player.empty": "没有找到谱子",
+    "music_player.bpm": "BPM",
+    "music_player.time_signature": "拍号",
+    "music_player.notes": "音符",
+    "music_player.duration": "时长",
+    "music_player.unplayable": "无法演奏的音符",
+    "music_player.play": "播放",
+    "music_player.stop": "停止",
+    "music_player.pause": "暂停",
+    "music_player.resume": "继续",
+    "music_player.starting": "准备中",
+    "music_player.current_key": "当前按键",
+    "music_player.preview_hint": "仅预览，暂不发送按键"
   }
 }

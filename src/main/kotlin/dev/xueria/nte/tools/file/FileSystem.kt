@@ -9,6 +9,7 @@ import java.nio.file.Path
 import kotlin.io.path.Path
 import kotlin.io.path.exists
 import kotlin.io.path.extension
+import kotlin.io.path.getLastModifiedTime
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
@@ -26,6 +27,8 @@ sealed interface FileSystem {
                 override fun filename(): String = fake.name
 
                 override fun extension(): String = fake.extension
+
+                override fun lastModified(): Long = 0
 
                 override fun readBytes(): Flow<ByteArray> = flow {
                     emit(Res.readBytes(path))
@@ -47,6 +50,9 @@ sealed interface FileSystem {
                 override fun filename(): String = file.name
 
                 override fun extension(): String = file.extension
+
+                override fun lastModified(): Long =
+                    runCatching { file.getLastModifiedTime().toMillis() }.getOrDefault(0)
 
                 override fun readBytes(): Flow<ByteArray> = flowOf(file.readBytes())
             }

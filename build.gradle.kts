@@ -15,6 +15,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.kotlinx.serialization.json)
 
+    implementation(libs.kotlin.test)
+
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)

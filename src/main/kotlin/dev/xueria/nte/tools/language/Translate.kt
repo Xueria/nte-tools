@@ -4,12 +4,8 @@ import dev.xueria.nte.tools.shell.Destination
 
 typealias TranslateKey = String
 
-fun translate(translateKey: TranslateKey, defaultText: String? = null): String {
-    val fallback = translateKey.split(".", "_")
-        .joinToString("") { part ->
-            part.replaceFirstChar { it.uppercase() }
-        }
-    return LanguageManager.translate(translateKey) ?: defaultText ?: fallback
+fun translate(translateKey: TranslateKey, default: String? = null): String {
+    return LanguageManager.language.translate(key = translateKey, default = default)
 }
 
 object Translate {

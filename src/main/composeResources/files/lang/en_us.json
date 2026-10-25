@@ -9,6 +9,19 @@
     "navigation.setting.label": "Setting",
     "navigation.setting.title": "Setting",
     "navigation.setting.description": "App Setting",
-    "settings.language": "Language"
+    "settings.language": "Language",
+    "music_player.empty": "No sheets loaded.",
+    "music_player.bpm": "BPM",
+    "music_player.time_signature": "Time signature",
+    "music_player.notes": "Notes",
+    "music_player.duration": "Duration",
+    "music_player.unplayable": "Unplayable notes",
+    "music_player.play": "Play",
+    "music_player.stop": "Stop",
+    "music_player.pause": "Pause",
+    "music_player.resume": "Resume",
+    "music_player.starting": "Starting",
+    "music_player.current_key": "Current key",
+    "music_player.preview_hint": "Preview only. Keys are not sent yet."
   }
 }
